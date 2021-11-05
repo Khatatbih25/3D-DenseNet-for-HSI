@@ -3,14 +3,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
-from keras.models import Sequential, Model
-from keras.layers import Convolution2D, MaxPooling2D, Conv3D, MaxPooling3D, ZeroPadding3D
-from keras.layers import Activation, Dropout, Flatten, Dense, BatchNormalization, Input
-from keras.utils.np_utils import to_categorical
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Conv3D, MaxPooling3D, ZeroPadding3D
+from tensorflow.keras.layers import Activation, Dropout, Flatten, Dense, BatchNormalization, Input
+from tensorflow.keras.utils import to_categorical
 from sklearn.decomposition import PCA
-from keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
-import keras.callbacks as kcallbacks
-from keras.regularizers import l2
+from tensorflow.keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
+import tensorflow.keras.callbacks as kcallbacks
+from tensorflow.keras.regularizers import l2
 import time
 import collections
 from sklearn import metrics, preprocessing
@@ -85,10 +85,10 @@ def model_DenseNet():
 
 # 加载数据
 # 修正的Indian pines数据集
-mat_data = sio.loadmat('D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/datasets/IN/Indian_pines_corrected.mat')
+mat_data = sio.loadmat('datasets/Indian_pines_corrected.mat')
 data_IN = mat_data['indian_pines_corrected']
 # 标签数据
-mat_gt = sio.loadmat('D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/datasets/IN/Indian_pines_gt.mat')
+mat_gt = sio.loadmat('datasets/Indian_pines_gt.mat')
 gt_IN = mat_gt['indian_pines_gt']
 # print('data_IN:',data_IN)
 print(data_IN.shape)
@@ -181,7 +181,7 @@ for index_iter in range(ITER):
 
     # save the best validated model
     # 使用easystopping通过一个动态阈值去选择最优的模型
-    best_weights_DenseNet_path = 'D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/models-in-6-32/Indian_best_3D_DenseNet_1' + str(
+    best_weights_DenseNet_path = 'training_results/indian_pines/Indian_best_3D_DenseNet_1' + str(
         index_iter + 1) + '.hdf5'
 
     # 通过sampling函数拿到测试和训练样本
@@ -228,22 +228,32 @@ for index_iter in range(ITER):
                                                 mode='auto')
 
     # 训练和验证
-    tic6 = time.clock()
+    tic6 = time.process_time()
     print(x_train.shape, x_test.shape)
     # (2055,7,7,200)  (7169,7,7,200)
+
+    # history_3d_densenet = model_densenet.fit(
+    #     x_train.reshape(x_train.shape[0], x_train.shape[1], x_train.shape[2], x_train.shape[3], 1), y_train,
+    #     validation_data=(x_val.reshape(x_val.shape[0], x_val.shape[1], x_val.shape[2], x_val.shape[3], 1), y_val),
+    #     batch_size=batch_size,
+    #     epochs=nb_epoch, shuffle=True, callbacks=[earlyStopping6, saveBestModel6])
+
     history_3d_densenet = model_densenet.fit(
-        x_train.reshape(x_train.shape[0], x_train.shape[1], x_train.shape[2], x_train.shape[3], 1), y_train,
-        validation_data=(x_val.reshape(x_val.shape[0], x_val.shape[1], x_val.shape[2], x_val.shape[3], 1), y_val),
+        x_train.reshape(x_train.shape[0], 1, x_train.shape[1], x_train.shape[2], x_train.shape[3]), y_train,
+        validation_data=(x_val.reshape(x_val.shape[0], 1, x_val.shape[1], x_val.shape[2], x_val.shape[3]), y_val),
         batch_size=batch_size,
-        nb_epoch=nb_epoch, shuffle=True, callbacks=[earlyStopping6, saveBestModel6])
-    toc6 = time.clock()
+        epochs=nb_epoch, shuffle=True, callbacks=[earlyStopping6, saveBestModel6])
+    toc6 = time.process_time()
 
     # 测试
-    tic7 = time.clock()
+    tic7 = time.process_time()
+    # loss_and_metrics = model_densenet.evaluate(
+    #     x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], x_test.shape[3], 1), y_test,
+    #     batch_size=batch_size)
     loss_and_metrics = model_densenet.evaluate(
-        x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], x_test.shape[3], 1), y_test,
+        x_test.reshape(x_test.shape[0], 1, x_test.shape[1], x_test.shape[2], x_test.shape[3]), y_test,
         batch_size=batch_size)
-    toc7 = time.clock()
+    toc7 = time.process_time()
 
     print('3D DenseNet Time: ', toc6 - tic6)
     print('3D DenseNet Test time:', toc7 - tic7)
@@ -255,8 +265,10 @@ for index_iter in range(ITER):
     # dict_keys(['val_loss', 'val_acc', 'loss', 'acc'])
 
     # 预测
+    # pred_test = model_densenet.predict(
+    #     x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], x_test.shape[3], 1)).argmax(axis=1)
     pred_test = model_densenet.predict(
-        x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], x_test.shape[3], 1)).argmax(axis=1)
+        x_test.reshape(x_test.shape[0], 1, x_test.shape[1], x_test.shape[2], x_test.shape[3])).argmax(axis=1)
     # 跟踪值出现的次数
     collections.Counter(pred_test)
 
@@ -282,5 +294,5 @@ for index_iter in range(ITER):
 modelStatsRecord.outputStats(KAPPA_3D_DenseNet, OA_3D_DenseNet, AA_3D_DenseNet, ELEMENT_ACC_3D_DenseNet,
                              TRAINING_TIME_3D_DenseNet, TESTING_TIME_3D_DenseNet,
                              history_3d_densenet, loss_and_metrics, CATEGORY,
-                             'D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/records-in-6-32/IN_train_3D_10_.txt',
-                             'D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/records-in-6-32/IN_train_3D_element_10_.txt')
+                             'training_results/indian_pines/IN_train_3D_10_.txt',
+                             'training_results/indian_pines/IN_train_3D_element_10_.txt')

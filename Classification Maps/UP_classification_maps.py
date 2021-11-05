@@ -2,11 +2,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
-from keras.utils.np_utils import to_categorical
-from keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
+from tensorflow.keras.utils.np_utils import to_categorical
+from tensorflow.keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
 from sklearn import metrics, preprocessing
 from Utils import zeroPadding, normalization, doPCA, modelStatsRecord, averageAccuracy, densenet_UP
-from keras import backend as K
+from tensorflow.keras import backend as K
 
 K.clear_session()
 

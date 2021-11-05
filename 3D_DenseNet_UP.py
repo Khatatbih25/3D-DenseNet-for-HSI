@@ -2,14 +2,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
-from keras.models import Sequential, Model
-from keras.layers import Convolution2D, MaxPooling2D, Conv3D, MaxPooling3D, ZeroPadding3D
-from keras.layers import Activation, Dropout, Flatten, Dense, BatchNormalization, Input
-from keras.utils.np_utils import to_categorical
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Conv3D, MaxPooling3D, ZeroPadding3D
+from tensorflow.keras.layers import Activation, Dropout, Flatten, Dense, BatchNormalization, Input
+from tensorflow.keras.utils import to_categorical
 from sklearn.decomposition import PCA
-from keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
-import keras.callbacks as kcallbacks
-from keras.regularizers import l2
+from tensorflow.keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
+import tensorflow.keras.callbacks as kcallbacks
+from tensorflow.keras.regularizers import l2
 import time
 from Utils import zeroPadding, normalization, doPCA, modelStatsRecord, averageAccuracy,  \
     densenet_UP,cnn_3D_UP
@@ -69,8 +69,8 @@ def model_DenseNet():
 
     return model_dense
 
-uPavia = sio.loadmat('D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/datasets/UP/PaviaU.mat')
-gt_uPavia = sio.loadmat('D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/datasets/UP/PaviaU_gt.mat')
+uPavia = sio.loadmat('datasets/PaviaU.mat')
+gt_uPavia = sio.loadmat('datasets/PaviaU_gt.mat')
 data_UP = uPavia['paviaU']
 gt_UP = gt_uPavia['paviaU_gt']
 print(data_UP.shape)
@@ -132,7 +132,7 @@ seeds = [1220, 1221, 1222]
 for index_iter in range(ITER):
     print("# %d Iteration" % (index_iter + 1))
 
-    best_weights_DenseNet_path = 'D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/models-up-3dcnn/UP_best_3D_DenseNet_' + str(
+    best_weights_DenseNet_path = 'training_results/university_of_pavia/UP_best_3D_DenseNet_' + str(
         index_iter + 1) + '.hdf5'
 
     np.random.seed(seeds[index_iter])
@@ -173,20 +173,28 @@ for index_iter in range(ITER):
                                                 save_best_only=True,
                                                 mode='auto')
 
-    tic6 = time.clock()
+    tic6 = time.process_time()
     print(x_train.shape, x_test.shape)
+    # history_3d_densenet = model_densenet.fit(
+    #     x_train.reshape(x_train.shape[0], x_train.shape[1], x_train.shape[2], x_train.shape[3], 1), y_train,
+    #     validation_data=(x_val.reshape(x_val.shape[0], x_val.shape[1], x_val.shape[2], x_val.shape[3], 1), y_val),
+    #     batch_size=batch_size,
+    #     epochs=nb_epoch, shuffle=True, callbacks=[earlyStopping6, saveBestModel6])
     history_3d_densenet = model_densenet.fit(
-        x_train.reshape(x_train.shape[0], x_train.shape[1], x_train.shape[2], x_train.shape[3], 1), y_train,
-        validation_data=(x_val.reshape(x_val.shape[0], x_val.shape[1], x_val.shape[2], x_val.shape[3], 1), y_val),
+        x_train.reshape(x_train.shape[0], 1, x_train.shape[1], x_train.shape[2], x_train.shape[3]), y_train,
+        validation_data=(x_val.reshape(x_val.shape[0], 1, x_val.shape[1], x_val.shape[2], x_val.shape[3]), y_val),
         batch_size=batch_size,
-        nb_epoch=nb_epoch, shuffle=True, callbacks=[earlyStopping6, saveBestModel6])
-    toc6 = time.clock()
+        epochs=nb_epoch, shuffle=True, callbacks=[earlyStopping6, saveBestModel6])
+    toc6 = time.process_time()
 
-    tic7 = time.clock()
+    tic7 = time.process_time()
+    # loss_and_metrics_3d_densenet = model_densenet.evaluate(
+    #     x_test.reshape(x_test.shape[0] x_test.shape[1], x_test.shape[2], x_test.shape[3], 1), y_test,
+    #     batch_size=batch_size)
     loss_and_metrics_3d_densenet = model_densenet.evaluate(
-        x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], x_test.shape[3], 1), y_test,
+        x_test.reshape(x_test.shape[0], 1, x_test.shape[1], x_test.shape[2], x_test.shape[3]), y_test,
         batch_size=batch_size)
-    toc7 = time.clock()
+    toc7 = time.process_time()
 
     print('3D DenseNet  Time: ', toc6 - tic6)
     print('3D DenseNet  Test time:', toc7 - tic7)
@@ -196,8 +204,10 @@ for index_iter in range(ITER):
 
     print(history_3d_densenet.history.keys())
 
+    # pred_test = model_densenet.predict(
+    #     x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], x_test.shape[3], 1)).argmax(axis=1)
     pred_test = model_densenet.predict(
-        x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], x_test.shape[3], 1)).argmax(axis=1)
+        x_test.reshape(x_test.shape[0], 1, x_test.shape[1], x_test.shape[2], x_test.shape[3])).argmax(axis=1)
     collections.Counter(pred_test)
     gt_test = gt[test_indices] - 1
     overall_acc = metrics.accuracy_score(pred_test, gt_test[:-VAL_SIZE])
@@ -217,5 +227,5 @@ for index_iter in range(ITER):
 modelStatsRecord.outputStats(KAPPA_3D_DenseNet, OA_3D_DenseNet, AA_3D_DenseNet, ELEMENT_ACC_3D_DenseNet,
                              TRAINING_TIME_3D_DenseNet, TESTING_TIME_3D_DenseNet,
                              history_3d_densenet, loss_and_metrics_3d_densenet, CATEGORY,
-                             'D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/records-up-3dcnn/UP_train_3D_10.txt',
-                             'D:/Tensorflow  Learning/3D-DenseNet-Hyperspectral/records-up-3dcnn/UP_train_3D_element_10.txt')
+                             'training_results/university_of_pavia/UP_train_3D_10.txt',
+                             'training_results/university_of_pavia/UP_train_3D_element_10.txt')

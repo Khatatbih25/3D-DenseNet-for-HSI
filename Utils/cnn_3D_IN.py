@@ -1,20 +1,20 @@
-from keras.models import Model, Sequential
-from keras.layers import (
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.layers import (
     Input,
     Activation,
-    merge,
+    
     Dense,
     Flatten,
     Dropout
 )
-from keras.layers.convolutional import (
+from tensorflow.keras.layers import (
     Convolution3D,
     MaxPooling3D,
     AveragePooling3D,
     Conv3D
 )
-from keras import backend as K
-from keras import regularizers
+from tensorflow.keras import backend as K
+from tensorflow.keras import regularizers
 
 def _handle_dim_ordering():
     global CONV_DIM1

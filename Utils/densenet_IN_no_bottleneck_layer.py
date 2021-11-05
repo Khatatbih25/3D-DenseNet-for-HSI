@@ -1,23 +1,23 @@
-from keras.models import Model
+from tensorflow.keras.models import Model
 import tensorflow as tf
-from keras.layers import (
+from tensorflow.keras.layers import (
     Input,
     Activation,
-    merge,
+    
     Dense,
     Flatten,
     Dropout,
     BatchNormalization,
     Concatenate,
     GlobalAveragePooling3D)
-from keras.layers.convolutional import (
+from tensorflow.keras.layers import (
     Convolution3D,
     MaxPooling3D,
     AveragePooling3D,
     Conv3D,
     Conv2D
 )
-from keras import backend as K
+from tensorflow.keras import backend as K
 
 def _handle_dim_ordering():
     global CONV_DIM1

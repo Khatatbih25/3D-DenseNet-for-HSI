@@ -1,23 +1,23 @@
-from keras.models import Model
+from tensorflow.keras.models import Model
 import tensorflow as tf
-from keras.layers import (
+from tensorflow.keras.layers import (
     Input,
     Activation,
-    merge,
+    
     Dense,
     Flatten,
     Dropout,
     BatchNormalization,
     Concatenate,
     GlobalAveragePooling3D)
-from keras.layers.convolutional import (
+from tensorflow.keras.layers import (
     Convolution3D,
     MaxPooling3D,
     AveragePooling3D,
     Conv3D,
     Conv2D
 )
-from keras import backend as K
+from tensorflow.keras import backend as K
 
 
 def _handle_dim_ordering():
@@ -25,7 +25,7 @@ def _handle_dim_ordering():
     global CONV_DIM2
     global CONV_DIM3
     global CHANNEL_AXIS
-    if K.image_dim_ordering() == 'tf':
+    if K.image_data_format() == 'tf':
         CONV_DIM1 = 1
         CONV_DIM2 = 2
         CONV_DIM3 = 3
@@ -112,7 +112,7 @@ class ResnetBuilder(object):
         print('original input shape:', input_shape)
         # orignal input shape: 1,7,7,200
 
-        if K.image_dim_ordering() == 'tf':
+        if K.image_data_format() == 'tf':
             input_shape = (input_shape[1], input_shape[2], input_shape[3], input_shape[0])
         print('change input shape:', input_shape)
 
@@ -122,7 +122,7 @@ class ResnetBuilder(object):
         # 3D Convolution and pooling
         conv1 = Conv3D(64, kernel_size=(3, 3, 3), strides=(1, 1, 1), padding='SAME', kernel_initializer='he_normal')(
             input)
-        pool1 = MaxPooling3D(pool_size=(3, 3, 3), strides=(2, 2, 2))(conv1)
+        pool1 = MaxPooling3D(pool_size=(3, 3, 3), strides=(2, 2, 2), padding='same')(conv1)
 
         # Dense Block1
         x = dense_block(pool1, 6, name='conv1')

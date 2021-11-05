@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""DenseNet models for Keras.
+"""DenseNet models for tensorflow.keras.
 
 # Reference paper
 
@@ -117,13 +117,13 @@ def DenseNet(blocks,
     Optionally loads weights pre-trained
     on ImageNet. Note that when using TensorFlow,
     for best performance you should set
-    `image_data_format='channels_last'` in your Keras config
+    `image_data_format='channels_last'` in your tensorflow.keras config
     at ~/.keras/keras.json.
 
     The model and the weights are compatible with
     TensorFlow, Theano, and CNTK. The data format
     convention used by the model is the one
-    specified in your Keras config file.
+    specified in your tensorflow.keras config file.
 
     # Arguments
         blocks: numbers of building blocks for the four dense layers.
@@ -132,7 +132,7 @@ def DenseNet(blocks,
         weights: one of `None` (random initialization),
               'imagenet' (pre-training on ImageNet),
               or the path to the weights file to be loaded.
-        input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
+        input_tensor: optional tensorflow.keras tensor (i.e. output of `layers.Input()`)
             to use as image input for the model.
         input_shape: optional shape tuple, only to be specified
             if `include_top` is False (otherwise the input shape
@@ -155,7 +155,7 @@ def DenseNet(blocks,
             if no `weights` argument is specified.
 
     # Returns
-        A Keras model instance.
+        A tensorflow.keras model instance.
 
     # Raises
         ValueError: in case of invalid argument for `weights`,

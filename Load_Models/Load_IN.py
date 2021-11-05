@@ -3,14 +3,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
-from keras.models import Sequential, Model
-from keras.layers import Convolution2D, MaxPooling2D, Conv3D, MaxPooling3D, ZeroPadding3D
-from keras.layers import Activation, Dropout, Flatten, Dense, BatchNormalization, Input
-from keras.utils.np_utils import to_categorical
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Conv3D, MaxPooling3D, ZeroPadding3D
+from tensorflow.keras.layers import Activation, Dropout, Flatten, Dense, BatchNormalization, Input
+from tensorflow.keras.utils.np_utils import to_categorical
 from sklearn.decomposition import PCA
-from keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
-import keras.callbacks as kcallbacks
-from keras.regularizers import l2
+from tensorflow.keras.optimizers import Adam, SGD, Adadelta, RMSprop, Nadam
+import tensorflow.keras.callbacks as kcallbacks
+from tensorflow.keras.regularizers import l2
 import time
 import collections
 from sklearn import metrics, preprocessing
