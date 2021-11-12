@@ -174,7 +174,7 @@ def open_hs_rasterio():
         plt.pause(0)
 
         # Show image cube
-        #spectral.view_cube(resampled_img, size=(1200, 900))
+        spectral.view_cube(resampled_img, size=(1200, 900))
 
 def open_hs_spectral():
     # Import hyperpectral image
@@ -229,8 +229,8 @@ if __name__ == "__main__":
     # Setup wxApp
     app = wx.App(False)
 
-    #open_hs_rasterio()
-    open_lidar_rasterio()
+    open_hs_rasterio()
+    #open_lidar_rasterio()
 
     # Prevent apps from closing immediately
     app.MainLoop()

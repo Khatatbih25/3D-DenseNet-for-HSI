@@ -116,7 +116,7 @@ class ResnetBuilder(object):
         # 3D Convolution and pooling
         conv1 = Conv3D(64, kernel_size=(3, 3, 20), strides=(1, 1, 1), padding='SAME', kernel_initializer='he_normal')(
             input)
-        pool1 = MaxPooling3D(pool_size=(3, 3, 3), strides=(2, 2, 2))(conv1)
+        pool1 = MaxPooling3D(pool_size=(3, 3, 3), strides=(2, 2, 2), padding='same')(conv1)
 
         # Dense Block1
         x = dense_block(pool1, 6, name='conv1')
