@@ -1,0 +1,14 @@
+conda create -n <project name> python=3.9
+conda activate <project name>
+conda install matplotlib
+conda install -c conda-forge tensorflow
+conda install -c conda-forge tensorflow-gpu
+conda install pandas
+conda install scikit-learn
+conda install -c conda-forge gdal
+conda install -c conda-forge rasterio
+conda install pillow
+conda install -c conda-forge wxpython
+conda install ipython
+conda install pyopengl
+conda install -c conda-forge spectral
