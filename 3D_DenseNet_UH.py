@@ -2,16 +2,18 @@
 # -*- coding: utf-8 -*-
 
 """
-Test harness module for 3D-DenseNet for University of Pavia
+Test harness module for 3D-DenseNet for University of Houston 2018
 """
 
 ### Built-in Imports ###
+import argparse
 import collections
 import os
 import time
 
 ### Other Library Imports ###
 import numpy as np
+from numpy.core.numeric import full_like
 import scipy.io as sio
 from sklearn import metrics, preprocessing
 import tensorflow.keras.callbacks as kcallbacks
@@ -20,13 +22,14 @@ from tensorflow.keras.utils import to_categorical
 
 
 ### Local Imports ###
-from Utils import averageAccuracy, cnn_3D_UP, densenet_UP, modelStatsRecord, zeroPadding
+from grss_dfc_2018_uh import NUMBER_OF_UH_2018_CLASSES, UH_2018_Dataset
+from Utils import averageAccuracy, densenet_IN, modelStatsRecord, zeroPadding
+import utilities
 
 ### Environment Setup ###
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-
-### Definitions ###
+### Global Constants ###
 
 def indexToAssignment(indices, Row, Col, pad_length):
     """
@@ -55,7 +58,6 @@ def indexToAssignment(indices, Row, Col, pad_length):
 
     # Loop through the enumeration of the indices
     for counter, value in enumerate(indices):
-        
         assign_0 = value // Col + pad_length    # Row assignment
         assign_1 = value % Col + pad_length     # Column assignment
         new_assign[counter] = [assign_0, assign_1] # Assign row-col pair
@@ -194,9 +196,7 @@ def model_DenseNet(img_rows, img_cols, img_channels, nb_classes):
 
     # Build DenseNet model with kernel (depth (?), rows, cols, bands) on
     # a number of classes
-    # model_dense = cnn_3D_UP.ResnetBuilder.build_resnet_8(
-    #     (1, img_rows, img_cols, img_channels), nb_classes)
-    model_dense = densenet_UP.ResnetBuilder.build_resnet_8(
+    model_dense = densenet_IN.ResnetBuilder.build_resnet_8(
         (1, img_rows, img_cols, img_channels), nb_classes)
 
     # Create RMSprop optimizer
@@ -207,44 +207,84 @@ def model_DenseNet(img_rows, img_cols, img_channels, nb_classes):
 
     return model_dense
 
-def run_3d_densenet_up():
+def run_3d_densenet_uh():
     """
-    Runs the 3D-DenseNet for the University of Pavia dataset.
+    Runs the 3D-DenseNet for the University of Houston dataset.
     """
+
+    dataset = UH_2018_Dataset()
+    dataset.load_full_gt_image()
+    dataset.load_full_hs_image()
+
+    train_indices, test_indices = dataset.get_train_test_split(flatten=True)
+
+    data = dataset.hs_image
+    gt = dataset.gt_image
+
+    # tile_list=((0,2),(1,2),(0,3),(1,3))
+
+    # data = dataset.merge_tiles(dataset.load_hs_image_tiles(tile_list=tile_list), num_rows=2, num_cols=2)[...,::8]
+    # gt = dataset.merge_tiles(dataset.load_gt_image_tiles(tile_list=tile_list), num_rows=2, num_cols=2)
+
+    # # print(f'gt.shape={gt.shape}')
+
+    # image_height, image_width = gt.shape
+    # tile_width = int(image_width / 2)
+    # tile_height = int(image_height / 2)
+
+    # train_indices = []
+    # test_indices = []
+
+    # for col in range(image_width):
+    #     for row in range(image_height):
+    #         flat_index = row*image_width + col
+    #         if gt[row][col] > 0:
+    #             if row > tile_height:
+    #                 train_indices.append(flat_index)
+    #             else:
+    #                 test_indices.append(flat_index)
+
+    # train_indices = np.asarray(train_indices)
+    # test_indices = np.asarray(test_indices)
+
+    # train_indices = np.asarray(
+    #     [row*image_width+col for row,col in dataset.get_tile_indices((1,2),row_offset=1)] +
+    #     [row*image_width+col for row,col in dataset.get_tile_indices((1,3),row_offset=1, col_offset=1)])
+    
+    # test_indices = np.asarray(
+    #     [row*image_width+col for row,col in dataset.get_tile_indices((0,2))] +
+    #     [row*image_width+col for row,col in dataset.get_tile_indices((0,3),col_offset=1)])
+
+    TRAIN_VAL_SPLIT = 0.2   # Use 20% of training samples for validation
 
     ### Set Constants ###
-    INPUT_DIMENSION_CONV = 103  # number of spectral bands
+    INPUT_DIMENSION_CONV = data.shape[-1]
 
-    # The total split is 1:1:8 for train:validation:test
-    TOTAL_SIZE = 42776  # total number of samples across all classes
-    VAL_SIZE = 4281     # total number of samples in the validation dataset
-    TRAIN_SIZE = 4281   # total number of samples in the training dataset
-    TEST_SIZE = TOTAL_SIZE - TRAIN_SIZE # total number of samples in test set
-    VALIDATION_SPLIT = 0.90  # 10% for training and %90 for validation and testing
+    dataset.clear_all_images()
+
+    TOTAL_SIZE = len(train_indices) + len(test_indices) # total number of samples across all classes
+    VAL_SIZE = int(len(train_indices) * TRAIN_VAL_SPLIT)     # total number of samples in the validation dataset
+    TRAIN_SIZE = len(train_indices)          # total number of samples in the training dataset
+    TEST_SIZE = len(test_indices) # total number of samples in test set
+    VALIDATION_SPLIT = 0.8  # 20% for training and 80% for validation and testing
 
     # Spatial context size (number of neighbours in each spatial direction)
-    PATCH_LENGTH = 5  
+    PATCH_LENGTH = 1
 
-    ITER = 3        # number of iterations to run this model
-    CATEGORY = 9   # number of classification categories in dataset
+    ITER = 1        # number of iterations to run this model
+    CATEGORY = dataset.gt_num_classes
 
     ### Set Variables ###
 
-    # Load matlab data for University of Pavia dataset
-    uPavia = sio.loadmat('datasets/PaviaU.mat')
+    # Get Indian Pines dataset array
+    data_UH = data
 
-    # Get University of Pavia dataset array
-    data_UP = uPavia['paviaU']
+    # Get Indian Pines ground truth array
+    gt_UH = gt
 
-    # Load the matlab data for University of Pavia ground truth
-    gt_uPavia = sio.loadmat('datasets/PaviaU_gt.mat')
-
-    # Get University of Pavia ground truth array
-    gt_UP = gt_uPavia['paviaU_gt']
-
-    new_gt_UP = gt_UP   # copy of ground truth array data
-    batch_size = 16     # number of samples to put through model in one shot
-    nb_epoch = 200      # number of epochs to run model for
+    new_gt_UH = gt_UH   # copy of ground truth array data
+    batch_size = 128     # number of samples to put through model in one shot
+    nb_epoch = 1        # number of epochs to run model for
 
     img_rows = PATCH_LENGTH * 2 + 1 # number of rows in neighborhood
     img_cols = PATCH_LENGTH * 2 + 1 # number of cols in neighborhood
@@ -253,31 +293,40 @@ def run_3d_densenet_up():
 
     # Number of epochs with no improvement after which training will be
     # stopped
-    patience = 200
+    patience = 5
 
     # Take the input data and reshape it from a 3-D array into a 2-D array
     # by taking the product of the first two dimensions as the new first
     # dimension and the product of the remaining dimensions (should be just
     # one) as the second dimension
-    data = data_UP.reshape(np.prod(data_UP.shape[:2]), np.prod(data_UP.shape[2:]))
+    data = data_UH.reshape(np.prod(data_UH.shape[:2]), np.prod(data_UH.shape[2:]))
 
     # Independently standardize each feature, center it, and scale each
     # feature to the unit variance
     data = preprocessing.scale(data)
 
+    # Print variables for verification
+    print(f'data_UH.shape={data_UH.shape}')
+    print(f'gt_UH.shape={gt_UH.shape}')
+    print(f'data_UH.shape[:2]={data_UH.shape[:2]}')
+    print(f'np.prod(data_UH.shape[:2])={np.prod(data_UH.shape[:2])}')
+    print(f'data_UH.shape[2:]={data_UH.shape[2:]}')
+    print(f'np.prod(data_UH.shape[2:])={np.prod(data_UH.shape[2:])}')
+    print(f'np.prod(new_gt_UH.shape[:2])={np.prod(new_gt_UH.shape[:2])}')
+    print(f'data.shape={data.shape}')
+
     # Reshape the ground truth to be only one dimension consisting of the
     # product of the first two dimensions
-    gt = new_gt_UP.reshape(np.prod(new_gt_UP.shape[:2]), )
+    gt = new_gt_UH.reshape(np.prod(new_gt_UH.shape[:2]), )
 
     # Create a nd array copy of the dataset with its first three dimensions
-    data_ = data.reshape(data_UP.shape[0], data_UP.shape[1], data_UP.shape[2])
-
-    # Create a copy of the copy of the dataset
-    whole_data = data_
+    whole_data = data.reshape(data_UH.shape[0], data_UH.shape[1], data_UH.shape[2])
 
     # Create an nd array copy of the dataset with padding at PATCH_LENGTH
     # distance around the image
     padded_data = zeroPadding.zeroPadding_3D(whole_data, PATCH_LENGTH)
+
+    # Adjust training and testing indices
 
     # Create zeroed out numpy arrays with dimensions 
     # (# training samples, spatial-sample size, spatial-sample size, # bands)
@@ -296,16 +345,16 @@ def run_3d_densenet_up():
 
     # A list of random number generator seeds where the seed at each index
     # corresponds to the seed to use at that number iteration
-    seeds = [1220, 1221, 1222]
+    seeds = [1334]
 
     # Print variables for verification
-    print(f'data_UP.shape={data_UP.shape}')
-    print(f'gt_UP.shape={gt_UP.shape}')
-    print(f'data_UP.shape[:2]={data_UP.shape[:2]}')
-    print(f'np.prod(data_UP.shape[:2])={np.prod(data_UP.shape[:2])}')
-    print(f'data_UP.shape[2:]={data_UP.shape[2:]}')
-    print(f'np.prod(data_UP.shape[2:])={np.prod(data_UP.shape[2:])}')
-    print(f'np.prod(new_gt_UP.shape[:2])={np.prod(new_gt_UP.shape[:2])}')
+    print(f'data_UH.shape={data_UH.shape}')
+    print(f'gt_UH.shape={gt_UH.shape}')
+    print(f'data_UH.shape[:2]={data_UH.shape[:2]}')
+    print(f'np.prod(data_UH.shape[:2])={np.prod(data_UH.shape[:2])}')
+    print(f'data_UH.shape[2:]={data_UH.shape[2:]}')
+    print(f'np.prod(data_UH.shape[2:])={np.prod(data_UH.shape[2:])}')
+    print(f'np.prod(new_gt_UH.shape[:2])={np.prod(new_gt_UH.shape[:2])}')
     print(f'data.shape={data.shape}')
     print(f'padded_data.shape={padded_data.shape}')
     print(f'train_data.shape={train_data.shape}')
@@ -318,33 +367,31 @@ def run_3d_densenet_up():
 
         # Path for saving the best validated model at the model
         # checkpoint
-        best_weights_DenseNet_path = 'training_results/university_of_pavia/UP_best_3D_DenseNet_' + str(
+        best_weights_DenseNet_path = 'training_results/university_of_houston/UHouston_best_3D_DenseNet_1' + str(
             index_iter + 1) + '.hdf5'
 
         # Initialize random seed for sampling function
         np.random.seed(seeds[index_iter])
 
-        # Randomly sample each class into the training set and the
-        # testing/validation set
-        train_indices, test_indices = sampling(VALIDATION_SPLIT, gt)
+        print(f'unique train indices: {np.unique(gt[train_indices])}')
 
         # Create training set class vector
         y_train = gt[train_indices] - 1
 
         # Convert training set class vector into binary class matrix 
         # for one-hot encoding
-        y_train = to_categorical(np.asarray(y_train))
+        y_train = to_categorical(np.asarray(y_train), num_classes=NUMBER_OF_UH_2018_CLASSES)
 
         # Create testing set class vector
         y_test = gt[test_indices] - 1
 
         # Convert testing set class vector into binary class matrix 
         # for one-hot encoding
-        y_test = to_categorical(np.asarray(y_test))
+        y_test = to_categorical(np.asarray(y_test), num_classes=NUMBER_OF_UH_2018_CLASSES)
 
         # Get row-column pair assignments for training set
         train_assign = indexToAssignment(train_indices, whole_data.shape[0], whole_data.shape[1], PATCH_LENGTH)
-        
+
         # Loop through row-column training assignments to get the set of
         # neighborhood patches for each training sample
         for i in range(len(train_assign)):
@@ -360,16 +407,16 @@ def run_3d_densenet_up():
 
         # Shape training and testing dataset features sets to 
         # (#samples, rows, cols, bands)
-        x_train = train_data.reshape(train_data.shape[0], train_data.shape[1], train_data.shape[2], INPUT_DIMENSION_CONV)
-        x_test_all = test_data.reshape(test_data.shape[0], test_data.shape[1], test_data.shape[2], INPUT_DIMENSION_CONV)
+        x_train_all = train_data.reshape(train_data.shape[0], train_data.shape[1], train_data.shape[2], INPUT_DIMENSION_CONV)
+        x_test = test_data.reshape(test_data.shape[0], test_data.shape[1], test_data.shape[2], INPUT_DIMENSION_CONV)
 
-        # Break part of testing dataset out into validation dataset
-        x_val = x_test_all[-VAL_SIZE:]
-        y_val = y_test[-VAL_SIZE:]
+        # Break part of training dataset out into validation dataset
+        x_val = x_train_all[-VAL_SIZE:]
+        y_val = y_train[-VAL_SIZE:]
 
-        # Remove validation dataset from testing dataset
-        x_test = x_test_all[:-VAL_SIZE]
-        y_test = y_test[:-VAL_SIZE]
+        # Remove validation dataset from training dataset
+        x_train = x_train_all[:-VAL_SIZE]
+        y_train = y_train[:-VAL_SIZE]
 
         ############################################################################################################
         # Model creation, training, and testing
@@ -388,6 +435,13 @@ def run_3d_densenet_up():
         # Record start time for model training
         model_train_start = time.process_time()
         
+        print(f'x_train shape: {x_train.shape}')
+        print(f'x_train.reshape: {x_train.reshape(x_train.shape[0], 1, x_train.shape[1], x_train.shape[2], x_train.shape[3]).shape}')
+        print(f'y_train shape: {y_train.shape}')
+        print(f'x_val shape: {x_val.shape}')
+        print(f'x_val.reshape: {x_val.reshape(x_val.shape[0], 1, x_val.shape[1], x_val.shape[2], x_val.shape[3]).shape}')
+        print(f'y_val shape: {y_val.shape}')
+
         # Train the 3D-DenseNet
         history_3d_densenet = model_densenet.fit(
             x_train.reshape(x_train.shape[0], 1, x_train.shape[1], x_train.shape[2], x_train.shape[3]), y_train,
@@ -428,16 +482,16 @@ def run_3d_densenet_up():
         gt_test = gt[test_indices] - 1
         
         # Get prediction accuracy metric
-        overall_acc = metrics.accuracy_score(pred_test, gt_test[:-VAL_SIZE])
+        overall_acc = metrics.accuracy_score(pred_test, gt_test)
         
         # Get prediction confusion matrix
-        confusion_matrix = metrics.confusion_matrix(pred_test, gt_test[:-VAL_SIZE])
+        confusion_matrix = metrics.confusion_matrix(pred_test, gt_test)
         
         # Get individual class accuracy as well as average accuracy
         each_acc, average_acc = averageAccuracy.AA_andEachClassAccuracy(confusion_matrix)
         
         # Get Kappa metric from predictions
-        kappa = metrics.cohen_kappa_score(pred_test, gt_test[:-VAL_SIZE])
+        kappa = metrics.cohen_kappa_score(pred_test, gt_test)
         
         # Append all metrics to their respective lists
         KAPPA_3D_DenseNet.append(kappa)
@@ -461,11 +515,48 @@ def run_3d_densenet_up():
     modelStatsRecord.outputStats(KAPPA_3D_DenseNet, OA_3D_DenseNet, AA_3D_DenseNet, ELEMENT_ACC_3D_DenseNet,
                                 TRAINING_TIME_3D_DenseNet, TESTING_TIME_3D_DenseNet,
                                 history_3d_densenet, loss_and_metrics, CATEGORY,
-                                'training_results/university_of_pavia/UP_train_3D_10.txt',
-                                'training_results/university_of_pavia/UP_train_3D_element_10.txt')
+                                'training_results/university_of_houston/UH_train_3D_10_.txt',
+                                'training_results/university_of_houston/UH_train_3D_element_10_.txt')
 
+
+def uh_3d_densenet_parser():
+    """
+    Sets up the parser for command-line flags for the test harness 
+    script.
+
+    Returns
+    -------
+    argparse.ArgumentParser
+        An ArgumentParser object configured with the test_harness.py
+        command-line arguments.
+    """
+
+    SCRIPT_DESCRIPTION = ('Test harness script for experimenting on the '
+                      'University of Houston 2018 GRSS Data Fusion Contest '
+                      'dataset with the 3D-DenseNet model for hyperspectral '
+                      'images.')
+
+    parser = argparse.ArgumentParser(SCRIPT_DESCRIPTION)
+    parser.add_argument('--show-plots', action='store_true',
+            help='Turns on figures and plot displays.')
+    parser.add_argument('--verbose', action='store_true',
+            help='Sets output to be more verbose.')
+    parser.add_argument('--debug', action='store_true',
+            help='Enables debug output.')
+
+    return parser
 
 ### Main ###
 if __name__ == "__main__":
 
-    run_3d_densenet_up()
+    # Set up parser
+    parser = uh_3d_densenet_parser()
+    args = parser.parse_args()
+
+    # Get command line arguments
+    show_plots = args.show_plots
+    verbose = args.verbose
+    debug = args.debug
+
+    # Run Model
+    run_3d_densenet_uh()

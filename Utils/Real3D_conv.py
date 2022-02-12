@@ -6,7 +6,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras import Input
 from tensorflow.keras.layers import Convolution2D, MaxPooling2D, Convolution3D, MaxPooling3D,Conv3D
 from tensorflow.keras.layers import Activation, Dropout, Flatten, Dense, BatchNormalization
-from tensorflow.keras.utils.np_utils import to_categorical
+from tensorflow.keras.utils import to_categorical
 from sklearn.decomposition import PCA
 from tensorflow.keras.optimizers import Adam, SGD, Adadelta
 import tensorflow.keras.callbacks as kcallbacks
