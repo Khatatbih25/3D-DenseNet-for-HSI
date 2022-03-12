@@ -17,7 +17,12 @@
 # Lidar channel 3 = 532nm wavelength (green)
 # GSD: 0.5-m ground sampling distance (this is for MS-LiDAR point cloud
 #      data, digital surface model (DSM), and rasterized instensity)
-#
+# # - DEM_C123_3msr is a bare-earth digital elevation model (DEM) generated
+#    from returns classified as ground from all three sensors
+# - DEM_C123_TLI is a bare-earth DEM with void filling for manmade structures
+# - DEM+B_C123 is a hybrid ground and building DEM, generated from returns
+#    that were classified as coming from buildings and the ground by all
+#    titan sensors
 #
 # --- Hyper-Spectral ---
 # HSI sensor: ITRES CASI 1500
