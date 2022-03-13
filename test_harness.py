@@ -23,7 +23,7 @@ import argparse
 import datetime
 from operator import truediv
 import os
-import re
+from pathlib import Path
 import time
 import traceback
 
@@ -39,35 +39,6 @@ from tensorflow.keras.callbacks import (
     EarlyStopping,
     ModelCheckpoint,
 )
-from tensorflow.keras.layers import (
-    Activation,
-    AveragePooling3D,
-    BatchNormalization,
-    Concatenate,
-    Conv2D,
-    Conv3D,
-    Convolution3D,
-    Dense,
-    Dropout,
-    Flatten,
-    GlobalAveragePooling3D,
-    Input,
-    MaxPooling3D
-)
-from tensorflow.keras.models import (
-    Model, 
-    Sequential,
-) 
-from tensorflow.keras.optimizers import (
-    Adadelta,
-    Adagrad,
-    Adam,
-    Adamax,
-    Ftrl,
-    Nadam,
-    RMSprop,
-    SGD,
-)
 
 ### Local Imports ###
 from datasets import (
@@ -80,6 +51,7 @@ from datasets import (
 from models import (
     get_optimizer,
     densenet_model,
+    cnn_3d_model,
     baseline_cnn_model,
 )
 from Utils import densenet_IN
@@ -165,7 +137,7 @@ def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels
     loss = hyperparams['loss']
     model_metrics = hyperparams['metrics']
     best_weights_path = os.path.join(hyperparams['output_path'], 
-        f'{model.name}_best_weights_iter_{iteration}.hdf5')
+        f'{model.name}_best_weights_experiment_{iteration+1}.hdf5')
     patience = hyperparams['patience']
     optimizer = get_optimizer(**hyperparams)
     ignored_labels = hyperparams['ignored_labels']
@@ -188,7 +160,7 @@ def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels
                   loss_weights=None,
                   weighted_metrics=None,
                   run_eagerly=None,
-                  steps_per_execution=None)
+                  )
     
     # Display a summary of the model being trained
     model.summary()
@@ -197,25 +169,25 @@ def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels
     model_train_start = time.process_time()
 
     # Train the model
-    # model_history = model.fit(
-    #         train_dataset,
-    #         validation_data=val_dataset,
-    #         # batch_size=batch_size,
-    #         epochs=epochs, 
-    #         shuffle=True, 
-    #         use_multiprocessing=True,
-    #         workers=4,
-    #         callbacks=[cb_early_stopping, cb_save_best_model]
-    #     )
-
     model_history = model.fit(
             train_dataset,
             validation_data=val_dataset,
-            batch_size=batch_size,
+            # batch_size=batch_size,
             epochs=epochs, 
             shuffle=True, 
+            # use_multiprocessing=True,
+            # workers=4,
             callbacks=[cb_early_stopping, cb_save_best_model]
         )
+
+    # model_history = model.fit(
+    #         train_dataset,
+    #         validation_data=val_dataset,
+    #         batch_size=batch_size,
+    #         epochs=epochs, 
+    #         shuffle=True, 
+    #         callbacks=[cb_early_stopping, cb_save_best_model]
+    #     )
 
     # Record end time for model training
     model_train_end = time.process_time()
@@ -354,6 +326,12 @@ def test_harness_parser():
         type=str,
         default=None,
         help='The hyperspectral or data fusion dataset to use for experiments'
+    )
+    parser.add_argument(
+        '--model_id',
+        type=str,
+        default=None,
+        help='The identifier for the machine learning model to used on the dataset'
     )
 
     # Training options
@@ -523,89 +501,52 @@ def test_harness_parser():
 
     return parser
 
+
 ### Main ###
 
 if __name__ == "__main__":
+    # Start timing experiments
+    test_harness_start = time.time()
+
     # Arguments
     parser = test_harness_parser()
     args = parser.parse_args()
 
     hyperparams = vars(args)
 
-    # Set variables from hyperparams
-    output_path = hyperparams['output_path']
-    dataset_choice = hyperparams['dataset']
+    # Get output path
+    if hyperparams['output_path'] is not None:
+        output_path = hyperparams['output_path']
+    else:
+        output_path = './'
 
     # Get hyperparam derived variable values
     if hyperparams['experiments_json'] is not None:
-        experiments = pd.read_json(hyperparams['experiments_json'])
+        # Transpose the json dataframe, since the experiments are read
+        # in as columns instead of rows
+        experiments = pd.read_json(hyperparams['experiments_json']).T
         iterations = experiments.shape[0]
+        outfile_prefix = Path(hyperparams['experiments_json']).stem
     elif hyperparams['experiments_csv'] is not None:
         experiments = pd.read_csv(hyperparams['experiments_csv'])
         iterations = experiments.shape[0]
+        outfile_prefix = Path(hyperparams['experiments_csv']).stem
     else:
         experiments = None
         iterations = hyperparams['iterations']
+        outfile_prefix = 'experiment'
 
+    # Get model name of CPU
     cpu_name = cpuinfo.get_cpu_info()['brand_raw']
 
+    # Get model names of all GPUs on system
     gpu_names = []
     for gpu in tf.config.list_physical_devices(device_type = 'GPU'):
         gpu_names.append(tf.config.experimental.get_device_details(gpu)['device_name'])
 
-    device = get_device(args.cuda)
-
-    if 'CPU' in device:
-        device_name = cpu_name
-    else:
-        gpu_num = int(device.split(':')[-1])
-        device_name = gpu_names[gpu_num]
-
-    print()
-    print('-------------------------------------------------------------------')
-    print('LOADING DATASET...')
-    print('vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv')
-    # Get selected dataset
-    if dataset_choice == 'grss_dfc_2018':
-        # Determine what parts of dataset to use
-        if (not hyperparams['use_hs_data']
-            and not hyperparams['use_lidar_ms_data']
-            and not hyperparams['use_lidar_ndsm_data']
-            and not hyperparams['use_vhr_data']
-            and not hyperparams['use_all_data']):
-
-            print('<!> No specific data selected, defaulting to using only hyperspectral data... <!>')
-            hyperparams['use_hs_data'] = True
-        
-        data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
-    elif dataset_choice == 'indian_pines':
-        data, train_gt, test_gt, dataset_info = load_indian_pines_dataset(**hyperparams)
-    elif dataset_choice == 'pavia_center':
-        data, train_gt, test_gt, dataset_info = load_pavia_center_dataset(**hyperparams)
-    elif dataset_choice == 'university_of_pavia':
-        data, train_gt, test_gt, dataset_info = load_university_of_pavia_dataset(**hyperparams)
-    else:
-        print('No dataset chosen! Defaulting to only hyperspectral bands of grss_dfc_2018...')
-        dataset_choice = 'grss_dfc_2018'
-        hyperparams['use_hs_data'] = True
-        data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
-
-    print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
-    print('DATASET LOADED!')
-    print('-------------------------------------------------------------------')
-    print()
-
-    # Set dataset variables
-    dataset_name = dataset_info['name']
-    num_classes = dataset_info['num_classes']
-    ignored_labels = dataset_info['ignored_labels']
-    all_class_labels = dataset_info['class_labels']
-    valid_class_labels = [label for index, label in enumerate(all_class_labels) 
-                            if index not in ignored_labels]
-
-
+    # Initialize data list variables for CSV output at end of program
     experiment_data_list = []
-    per_class_data_list = []
+    per_class_data_lists = {}
 
     print('-------------------------------------------------------------------')
     print('-------------------------------------------------------------------')
@@ -629,12 +570,101 @@ if __name__ == "__main__":
         if experiments is not None:
             hyperparams = experiments.iloc[iteration].to_dict()
 
+            # Ignore the output path in the experiments, use the path
+            # from command line arguments
+            hyperparams['output_path'] = output_path
+
         # Initialize random seed for sampling function
         # Each random seed is a prime number, in order
         seed = next(primes)
         print(f'< Iteration #{iteration} random seed: {seed} >')
         print()
         np.random.seed(seed)
+
+        # Print out parameters for experiment
+        print('.......................................................')
+        print('EXPERIMENT PARAMETERS')
+        print('.......................................................')
+        header = '{:<40} | {:<40}'.format('PARAMETER', 'VALUE')
+        print(header)
+        print('=' * len(header))
+        for key in hyperparams:
+            print('{:<40} | {:<40}'.format(key, str(hyperparams[key])))
+            print('-' * len(header))
+        print('-' * len(header))
+        print('.......................................................')
+
+        # Choose the appropriate device from the hyperparameters
+        device = get_device(hyperparams['cuda'])
+
+        if 'CPU' in device:
+            device_name = cpu_name
+        else:
+            gpu_num = int(device.split(':')[-1])
+            device_name = gpu_names[gpu_num]
+            gpu = tf.config.list_physical_devices('GPU')[gpu_num]
+            # tf.config.experimental.set_virtual_device_configuration(
+            #     gpu,
+            #     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=4096)])
+            tf.config.experimental.set_memory_growth(gpu, True)
+            # config = tf.compat.v1.ConfigProto()
+            # config.gpu_options.per_process_gpu_memory_fraction = 0.8
+            # config.gpu_options.allow_growth = True
+            # session = tf.compat.v1.InteractiveSession(config=config)
+
+        print()
+        print('-------------------------------------------------------------------')
+        print('LOADING DATASET...')
+        print('vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv')
+
+        # Get dataset choice parameter
+        dataset_choice = hyperparams['dataset']
+        print()
+        print(f' < Dataset Chosen: {dataset_choice} >')
+        print()
+
+        # Make sure dataset is in per-class data list dictionary
+        if dataset_choice not in per_class_data_lists:
+            per_class_data_lists[dataset_choice] = []
+
+        # Get selected dataset
+        if dataset_choice == 'grss_dfc_2018':
+            # Determine what parts of dataset to use
+            if (not hyperparams['use_hs_data']
+                and not hyperparams['use_lidar_ms_data']
+                and not hyperparams['use_lidar_ndsm_data']
+                and not hyperparams['use_vhr_data']
+                and not hyperparams['use_all_data']):
+
+                print('<!> No specific data selected, defaulting to using only hyperspectral data... <!>')
+                hyperparams['use_hs_data'] = True
+            
+            data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
+        elif dataset_choice == 'indian_pines':
+            data, train_gt, test_gt, dataset_info = load_indian_pines_dataset(**hyperparams)
+        elif dataset_choice == 'pavia_center':
+            data, train_gt, test_gt, dataset_info = load_pavia_center_dataset(**hyperparams)
+        elif dataset_choice == 'university_of_pavia':
+            data, train_gt, test_gt, dataset_info = load_university_of_pavia_dataset(**hyperparams)
+        else:
+            print('No dataset chosen! Defaulting to only hyperspectral bands of grss_dfc_2018...')
+            dataset_choice = 'grss_dfc_2018'
+            hyperparams['use_hs_data'] = True
+            data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
+
+        print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
+        print('DATASET LOADED!')
+        print('-------------------------------------------------------------------')
+        print()
+
+        # Set dataset variables
+        dataset_name = dataset_info['name']
+        num_classes = dataset_info['num_classes']
+        ignored_labels = dataset_info['ignored_labels']
+        all_class_labels = dataset_info['class_labels']
+        valid_class_labels = [label for index, label in enumerate(all_class_labels) 
+                                if index not in ignored_labels]
+
 
         epochs = hyperparams['epochs']
         batch_size = hyperparams['batch_size']
@@ -646,7 +676,6 @@ if __name__ == "__main__":
         img_channels = data.shape[-1]
         img_rows = patch_size
         img_cols = patch_size
-        # filter_size = patch_size // 2 + 1
 
         # Add and update hyperparameters for model training
         hyperparams.update(
@@ -665,8 +694,10 @@ if __name__ == "__main__":
 
         experiment_data = {
             'experiment_number': iteration + 1,
+            'success': False,
             'random_seed': seed,
             'dataset': dataset_name,
+            'channels': img_channels,
             'model': None,
             'device': device_name,
             'epochs': epochs,
@@ -689,6 +720,7 @@ if __name__ == "__main__":
 
         per_class_data = {
             'experiment_number': iteration + 1, 
+            'random_seed': seed,
             'model': None, 
             'overall_accuracy': 0.0, 
             'average_accuracy': 0.0,
@@ -698,20 +730,44 @@ if __name__ == "__main__":
         
         try:
             with tf.device(device):
+                print('-------------------------------------------------------------------')
+                print('CREATE DATASET SEQUENCES FOR MODEL')
+                print('-------------------------------------------------------------------')
                 train_dataset, val_dataset, test_dataset, true_test = create_datasets(data, train_gt, test_gt, **hyperparams)
+                print('-------------------------------------------------------------------')
 
-                # model = baseline_cnn_model(img_rows=img_rows, 
-                #                            img_cols=img_cols, 
-                #                            img_channels=img_channels, 
-                #                            patch_size=filter_size, 
-                #                            nb_filters=num_classes * 2, 
-                #                            nb_classes=num_classes)
 
-                # Create model
-                model = densenet_model(img_rows=img_rows, 
+                print('-------------------------------------------------------------------')
+                print('CREATE MODEL')
+                print('-------------------------------------------------------------------')
+
+                # Create specified model
+                if hyperparams['model_id'] == '3d-densenet':
+                    model = densenet_model(img_rows=img_rows, 
                                     img_cols=img_cols, 
                                     img_channels=img_channels, 
                                     nb_classes=num_classes)
+                elif hyperparams['model_id'] == '3d-cnn':
+                    model = cnn_3d_model(img_rows=img_rows, 
+                                    img_cols=img_cols, 
+                                    img_channels=img_channels, 
+                                    nb_classes=num_classes)
+                elif hyperparams['model_id'] == 'cnn-baseline':
+                    filter_size = patch_size // 2 + 1
+                    model = baseline_cnn_model(img_rows=img_rows, 
+                                            img_cols=img_cols, 
+                                            img_channels=img_channels, 
+                                            patch_size=filter_size, 
+                                            nb_filters=num_classes * 2, 
+                                            nb_classes=num_classes)
+                else:
+                    print('<!> No model specified, defaulting to 3d-densenet <!>')
+                    model = densenet_model(img_rows=img_rows, 
+                                    img_cols=img_cols, 
+                                    img_channels=img_channels, 
+                                    nb_classes=num_classes)
+                
+                print('-------------------------------------------------------------------')
                 
                 # Record model name for output
                 experiment_data['model'] = model.name
@@ -744,6 +800,8 @@ if __name__ == "__main__":
                 for index, acc in enumerate(results['per_class_accuracies']):
                     per_class_data[results['labels'][index]] = acc
 
+                experiment_data['success'] = True
+
         except Exception as e:
             print()
             print('###################################################')
@@ -764,7 +822,7 @@ if __name__ == "__main__":
             print(f'Experiment #{iteration} crashed and thus failed!')
         
         experiment_data_list.append(experiment_data)
-        per_class_data_list.append(per_class_data)
+        per_class_data_lists[dataset_choice].append(per_class_data)
 
         print()
         print('*******************************************************')
@@ -780,13 +838,31 @@ if __name__ == "__main__":
 
     experiment_results = pd.DataFrame(experiment_data_list)
     experiment_results.to_csv(os.path.join(output_path, 
-                                f'{dataset_choice}__experiment_results.csv'))
+                                f'{outfile_prefix}_results.csv'))
     
-    print('...')
+    print('  >>> Experiment results saved!')
 
-    per_class_data_results = pd.DataFrame(per_class_data_list)
-    per_class_data_results.to_csv(os.path.join(output_path, 
-                                f'{dataset_choice}__class_results.csv'))
+    for dataset_choice in per_class_data_lists:
+        per_class_data_results = pd.DataFrame(per_class_data_lists[dataset_choice])
+        per_class_data_results.to_csv(os.path.join(output_path, 
+                        f'{outfile_prefix}__{dataset_choice}__class_results.csv'))
+        print(f'  >>> {dataset_choice} per-class results saved!')
 
-    print('RESULTS SAVED! ~EXITTING TEST HARNESS~')
+    print('RESULTS SAVED!')
     print('-------------------------------------------------------------------')
+    print()
+    print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
+    print('EXPERIMENTS COMPLETE!')
+    print('-------------------------------------------------------------------')
+    print('-------------------------------------------------------------------')
+    print('-------------------------------------------------------------------')
+    print()
+
+    test_harness_end = time.time()
+    test_harness_runtime = datetime.timedelta(seconds=(test_harness_end - test_harness_start))
+
+    print(f' < Total Test Harness Runtime: {test_harness_runtime} >')
+
+    print()
+    print('   ~~~ EXITTING TEST HARNESS PROGRAM ~~~')
+    print()

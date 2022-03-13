@@ -31,6 +31,14 @@ from tensorflow.keras.utils import (
 ### Local Imports ###
 from grss_dfc_2018_uh import UH_2018_Dataset
 
+### Global Variables ###
+_grss_dfc_2018_dataset = None
+_grss_dfc_2018_train_gt = None
+_grss_dfc_2018_test_gt = None
+_indian_pines_dataset = None
+_pavia_center_dataset = None
+_university_of_pavia_dataset = None
+
 ### Class Definitions ###
 
 class HyperspectralDataset(Sequence):
@@ -176,8 +184,8 @@ def sample_gt(gt, train_size, mode='random'):
            train, test = train_test_split(X, train_size=train_size)
            train_indices += train
            test_indices += test
-       train_indices = [list(t) for t in zip(*train_indices)]
-       test_indices = [list(t) for t in zip(*test_indices)]
+       train_indices = tuple([list(t) for t in zip(*train_indices)])
+       test_indices = tuple([list(t) for t in zip(*test_indices)])
        train_gt[train_indices] = gt[train_indices]
        test_gt[test_indices] = gt[test_indices]
 
@@ -203,18 +211,33 @@ def sample_gt(gt, train_size, mode='random'):
         raise ValueError(f'{mode} sampling is not implemented yet.')
     return train_gt, test_gt
 
-def load_grss_dfc_2018_uh_dataset(**hyperparams):
+def load_grss_dfc_2018_uh_dataset(reload=False, **hyperparams):
     #TODO
     
-    dataset = UH_2018_Dataset()
-    train_gt = dataset.load_full_gt_image(train_only=True)
-    test_gt = dataset.load_full_gt_image(test_only=True)
+    # Make sure the global variables are used
+    global _grss_dfc_2018_dataset
+    global _grss_dfc_2018_train_gt
+    global _grss_dfc_2018_test_gt
+
+    # To speed up processing, don't load or reload dataset unless
+    # necessary
+    if _grss_dfc_2018_dataset is None or reload:
+        _grss_dfc_2018_dataset = UH_2018_Dataset()
+        _grss_dfc_2018_train_gt = _grss_dfc_2018_dataset.load_full_gt_image(train_only=True)
+        _grss_dfc_2018_test_gt = _grss_dfc_2018_dataset.load_full_gt_image(test_only=True)
+
+    dataset = _grss_dfc_2018_dataset
+    train_gt = _grss_dfc_2018_train_gt
+    test_gt = _grss_dfc_2018_test_gt
 
     data = None
 
     # Check to see if hyperspectral data is being used
     if hyperparams['use_hs_data'] or hyperparams['use_all_data']:
-        hs_data = dataset.load_full_hs_image()
+        if dataset.hs_image is None:
+            hs_data = dataset.load_full_hs_image()
+        else:
+            hs_data = dataset.hs_image
         print(f'{dataset.name} hs_data shape: {hs_data.shape}')
         if data is None:
             data = np.copy(hs_data)
@@ -223,7 +246,10 @@ def load_grss_dfc_2018_uh_dataset(**hyperparams):
 
     # Check to see if lidar multispectral intensity data is being used
     if hyperparams['use_lidar_ms_data'] or hyperparams['use_all_data']:
-        lidar_ms_data = dataset.load_full_lidar_ms_image()
+        if dataset.lidar_ms_image is None:
+            lidar_ms_data = dataset.load_full_lidar_ms_image()
+        else:
+            lidar_ms_data = dataset.lidar_ms_image
         print(f'{dataset.name} lidar_ms_data shape: {lidar_ms_data.shape}')
         if data is None:
             data = np.copy(lidar_ms_data)
@@ -233,7 +259,10 @@ def load_grss_dfc_2018_uh_dataset(**hyperparams):
     # Check to see if lidar normalized digital surface model data is
     # being used
     if hyperparams['use_lidar_ndsm_data'] or hyperparams['use_all_data']:
-        lidar_ndsm_data = dataset.load_full_lidar_ndsm_image()
+        if dataset.lidar_ndsm_image is None:
+            lidar_ndsm_data = dataset.load_full_lidar_ndsm_image()
+        else:
+            lidar_ndsm_data = dataset.lidar_ndsm_image
         print(f'{dataset.name} lidar_ndsm_data shape: {lidar_ndsm_data.shape}')
         if data is None:
             data = np.copy(lidar_ndsm_data)
@@ -242,7 +271,10 @@ def load_grss_dfc_2018_uh_dataset(**hyperparams):
 
     # Check to see if very high resolution RGB image data is being used
     if hyperparams['use_vhr_data'] or hyperparams['use_all_data']:
-        vhr_data = dataset.load_full_vhr_image()
+        if dataset.vhr_image is None:
+            vhr_data = dataset.load_full_vhr_image()
+        else:
+            vhr_data = dataset.vhr_image
         print(f'{dataset.name} vhr_data shape: {vhr_data.shape}')
         if not data:
             data = np.copy(vhr_data)

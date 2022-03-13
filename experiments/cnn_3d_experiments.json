@@ -1,13 +1,13 @@
 {
     "experiment_1":{
-        "cuda": -1,
+        "cuda": 0,
         "restore": null,
         "output_path": null,
         "dataset": "grss_dfc_2018",
-        "model_id": "3d-densenet",
+        "model_id": "3d-cnn",
         "epochs": 5,
         "batch_size": 32,
-        "patch_size": 3,
+        "patch_size": 5,
         "train_split": 0.6,
         "class_balancing": false,
         "test_stride": 1,

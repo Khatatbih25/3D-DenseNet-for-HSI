@@ -2525,14 +2525,14 @@ if __name__ == "__main__":
     #                       train_gt_overlay=False,
     #                       test_gt_overlay=False)
 
-    # dataset.visualize_hs_data_cube()
+    dataset.visualize_hs_data_cube()
 
-    # dataset.get_gt_class_statistics(print_results=True)
-    # dataset.show_hs_image(rgb_channels=HS_RGB)
-    # dataset.show_lidar_ms_image()
-    # dataset.show_lidar_dsm_image()
-    # dataset.show_lidar_dem_image()
-    # dataset.show_lidar_ndsm_image()
+    dataset.get_gt_class_statistics(print_results=True)
+    dataset.show_hs_image(rgb_channels=HS_RGB)
+    dataset.show_lidar_ms_image()
+    dataset.show_lidar_dsm_image()
+    dataset.show_lidar_dem_image()
+    dataset.show_lidar_ndsm_image()
 
     # hsi = dataset.load_full_hs_image(thres=False, normalize=False)
     # spectral.envi.save_image('2018_IEEE_GRSS_DFC_HSI_TR.hdr', hsi)
@@ -2543,16 +2543,17 @@ if __name__ == "__main__":
     # view = spectral.imshow(hsi, source=hsi, bands=HS_RGB, figsize=(15,9))
     # plt.show(block=True)
     # spectral.envi.save_image('2018_IEEE_GRSS_DFC_HSI_TR.hdr', hsi)
-    gt = dataset.load_full_gt_image()
-    with rasterio.open('2018_IEEE_GRSS_DFC_GT.tif',
-                       'w',
-                       driver='GTiff',
-                       height=gt.shape[0],
-                       width=gt.shape[1],
-                       count=1,
-                       dtype=gt.dtype,
-                       nodata=None) as dst:
-        dst.write(gt,1)
+
+    # gt = dataset.load_full_gt_image()
+    # with rasterio.open('2018_IEEE_GRSS_DFC_GT.tif',
+    #                    'w',
+    #                    driver='GTiff',
+    #                    height=gt.shape[0],
+    #                    width=gt.shape[1],
+    #                    count=1,
+    #                    dtype=gt.dtype,
+    #                    nodata=None) as dst:
+    #     dst.write(gt,1)
 
     # train_gt = dataset.load_full_gt_image(train_only=True)
 

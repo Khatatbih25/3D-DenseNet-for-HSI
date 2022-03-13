@@ -23,6 +23,7 @@ import math
 ### Other Library Imports ###
 import tensorflow as tf
 from tensorflow.keras import backend as K
+from tensorflow.keras import regularizers
 from tensorflow.keras.callbacks import (
     EarlyStopping,
     ModelCheckpoint,
@@ -182,7 +183,7 @@ def _handle_dim_ordering():
     global CONV_DIM2
     global CONV_DIM3
     global CHANNEL_AXIS
-    if K.image_data_format() == 'tf':
+    if K.image_data_format() == 'channels_last':
         CONV_DIM1 = 1
         CONV_DIM2 = 2
         CONV_DIM3 = 3
@@ -226,7 +227,7 @@ def conv_block(x, growth_rate, name):
                             name=name + '_0_bn')(x)
     x1 = Activation('relu', name=name + '_0_relu')(x1)
     x1 = Conv3D(4 * growth_rate, 1, use_bias=False,
-                name=name + '_1_conv')(x1)
+                name=name + '_1_conv', padding='same')(x1)
     x1 = BatchNormalization(axis=bn_axis, epsilon=1.001e-5,
                             name=name + '_1_bn')(x1)
     x1 = Activation('relu', name=name + '_1_relu')(x1)
@@ -252,13 +253,13 @@ def transition_block(x, reduction, name):
                            name=name + '_bn')(x)
     x = Activation('relu', name=name + '_relu')(x)
     x = Conv3D(int(K.int_shape(x)[bn_axis] * reduction), 1, use_bias=False,
-               name=name + '_conv')(x)
-    x = AveragePooling3D(1, strides=(2, 2, 2), name=name + '_pool')(x)
+               name=name + '_conv', padding='same')(x)
+    x = AveragePooling3D(1, strides=(2, 2, 2), name=name + '_pool', padding='same')(x)
     return x
 
 
 # 组合模型
-class ResnetBuilder(object):
+class DensenetBuilder(object):
     @staticmethod
     def build(input_shape, num_outputs):
         print('original input shape:', input_shape)
@@ -269,9 +270,9 @@ class ResnetBuilder(object):
         print('original input shape:', input_shape)
         # orignal input shape: 1,7,7,200
 
-        if K.image_data_format() == 'tf':
-            input_shape = (input_shape[1], input_shape[2], input_shape[3], input_shape[0])
-        print('change input shape:', input_shape)
+        # if K.image_data_format() == 'channels_last':
+        #     input_shape = (input_shape[1], input_shape[2], input_shape[3], input_shape[0])
+        # print('change input shape:', input_shape)
 
         # 张量流输入
         input = Input(shape=input_shape)
@@ -302,11 +303,88 @@ class ResnetBuilder(object):
     @staticmethod
     def build_resnet_8(input_shape, num_outputs):
         # (1,7,7,200),16
-        return ResnetBuilder.build(input_shape, num_outputs)
+        return DensenetBuilder.build(input_shape, num_outputs)
+
+class CNN3DBuilder(object):
+    @staticmethod
+    def build(input_shape, num_outputs):
+        print('original input shape:', input_shape)
+        _handle_dim_ordering()
+        if len(input_shape) != 4:
+            raise Exception("Input shape should be a tuple (nb_channels, kernel_dim1, kernel_dim2, kernel_dim3)")
+
+        print('original input shape:', input_shape)
+        # orignal input shape: 1,7,7,200
+
+        if K.image_data_format() == 'channels_last':
+            input_shape = (input_shape[1], input_shape[2], input_shape[3], input_shape[0])
+        print('change input shape:', input_shape)
+
+        input = Input(shape=input_shape)
+
+        # conv1 = Conv3D(filters=128, kernel_size=(3, 3, 20), strides=(1, 1, 5),
+        #                kernel_regularizer=regularizers.l2(0.01))(input)
+        # act1 = Activation('relu')(conv1)
+        # pool1 = MaxPooling3D(pool_size=(2, 2, 2), strides=(1, 1, 1), padding='same')(act1)
+
+        # conv2 = Conv3D(filters=192, kernel_size=(2, 2, 3), strides=(1, 1, 2),
+        #                kernel_regularizer=regularizers.l2(0.01))(pool1)
+        # act2 = Activation('relu')(conv2)
+        # drop1 = Dropout(0.5)(act2)
+        # pool2 = MaxPooling3D(pool_size=(2, 2, 2), strides=(1, 1, 1), padding='same')(drop1)
+
+        # conv3 = Conv3D(filters=256, kernel_size=(3, 3, 3), strides=(1, 1, 2), padding='same',
+        #                kernel_regularizer=regularizers.l2(0.01))(pool2)
+        # act3 = Activation('relu')(conv3)
+        # drop2 = Dropout(0.5)(act3)
+
+        # flatten1 = Flatten()(drop2)
+        # fc1 = Dense(200, kernel_regularizer=regularizers.l2(0.01))(flatten1)
+        # act3 = Activation('relu')(fc1)
+
+        conv1 = Conv3D(filters=32, kernel_size=(3, 3, 20), strides=(1, 1, 5), padding='same',
+                       kernel_regularizer=regularizers.l2(0.01))(input)
+        act1 = Activation('relu')(conv1)
+        pool1 = MaxPooling3D(pool_size=(2, 2, 2), strides=(1, 1, 1), padding='same')(act1)
+
+        conv2 = Conv3D(filters=64, kernel_size=(2, 2, 3), strides=(1, 1, 2), padding='same',
+                       kernel_regularizer=regularizers.l2(0.01))(pool1)
+        act2 = Activation('relu')(conv2)
+        drop1 = Dropout(0.5)(act2)
+        pool2 = MaxPooling3D(pool_size=(2, 2, 2), strides=(1, 1, 1), padding='same')(drop1)
+
+        conv3 = Conv3D(filters=128, kernel_size=(3, 3, 3), strides=(1, 1, 2), padding='same',
+                       kernel_regularizer=regularizers.l2(0.01))(pool2)
+        act3 = Activation('relu')(conv3)
+        drop2 = Dropout(0.5)(act3)
+
+        flatten1 = Flatten()(drop2)
+        fc1 = Dense(num_outputs*2, kernel_regularizer=regularizers.l2(0.01))(flatten1)
+        act3 = Activation('relu')(fc1)
+
+
+        # Classifier block
+        dense = Dense(units=num_outputs, activation="softmax", kernel_initializer="he_normal")(act3)
+
+        model = Model(inputs=input, outputs=dense, name='3D-CNN')
+        return model
+
+    @staticmethod
+    def build_resnet_8(input_shape, num_outputs):
+        # (1,7,7,200),16
+        return CNN3DBuilder.build(input_shape, num_outputs)
+
 
 def densenet_model(img_rows, img_cols, img_channels, nb_classes):
 
-    model = ResnetBuilder.build_resnet_8(
+    model = DensenetBuilder.build_resnet_8(
+        (1, img_rows, img_cols, img_channels), nb_classes)
+
+    return model
+
+def cnn_3d_model(img_rows, img_cols, img_channels, nb_classes):
+
+    model = CNN3DBuilder.build_resnet_8(
         (1, img_rows, img_cols, img_channels), nb_classes)
 
     return model
@@ -339,7 +417,8 @@ def baseline_cnn_model(img_rows, img_cols, img_channels,
 
     model_input = Input(shape=(img_rows, img_cols, img_channels, 1))
     conv_layer = Conv3D(nb_filters, (patch_size, patch_size, img_channels), 
-                        strides=(1, 1, 1),name='3d_convolution_layer', padding='same')(model_input)
+                        strides=(1, 1, 1),name='3d_convolution_layer', padding='same',
+                        kernel_regularizer=regularizers.l2(0.01))(model_input)
     activation_layer = Activation('relu', name='activation_layer')(conv_layer)
     max_pool_layer = MaxPooling3D(pool_size=(2, 2, 2), name='3d_max_pooling_layer', padding='same')(activation_layer)
     flatten_layer = Flatten(name='flatten_layer')(max_pool_layer)
