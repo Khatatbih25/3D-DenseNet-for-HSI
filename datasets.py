@@ -23,6 +23,7 @@ import math
 ### Other Library Imports ###
 import numpy as np
 from sklearn.model_selection import train_test_split
+import tensorflow as tf
 from tensorflow.keras.utils import (
     Sequence,
     to_categorical, 
@@ -31,15 +32,62 @@ from tensorflow.keras.utils import (
 ### Local Imports ###
 from grss_dfc_2018_uh import UH_2018_Dataset
 
-### Global Variables ###
-_grss_dfc_2018_dataset = None
-_grss_dfc_2018_train_gt = None
-_grss_dfc_2018_test_gt = None
-_indian_pines_dataset = None
-_pavia_center_dataset = None
-_university_of_pavia_dataset = None
-
 ### Class Definitions ###
+# class HyperspectralDataset(Sequence):
+#     def __init__(self, data, gt, shuffle=True, **hyperparams):
+#         """
+#         Args:
+#             data: 3D hyperspectral image
+#             gt: 2D array of labels
+#             patch_size: int, size of the spatial neighbourhood
+#             center_pixel: bool, set to True to consider only the label of the
+#                           center pixel
+#             data_augmentation: bool, set to True to perform random flips
+#             supervision: 'full' or 'semi' supervised algorithms
+#         """
+#         super(HyperspectralDataset, self).__init__()
+#         self.data = data
+#         self.gt = gt
+#         self.shuffle = shuffle
+#         self.batch_size = hyperparams["batch_size"]
+#         self.patch_size = hyperparams["patch_size"]
+#         self.ignored_labels = set(hyperparams["ignored_labels"])
+#         self.center_pixel = hyperparams["center_pixel"]
+#         self.num_classes = hyperparams['n_classes']
+#         self.loss = hyperparams['loss']
+        
+#         self.indices, self.labels = get_valid_indices(data, gt, 
+#             self.patch_size, self.ignored_labels, hyperparams['supervision'])
+
+#         # Run epoch end function to initialize dataset
+#         self.on_epoch_end()
+
+#     def on_epoch_end(self):
+#         if self.shuffle:
+#             np.random.shuffle(self.indices)
+
+#     def __len__(self):
+#         return math.ceil(len(self.indices) / self.batch_size)
+
+#     def __getitem__(self, i):
+#         batch_data = []
+#         batch_labels = []
+
+#         for item in range(i*self.batch_size,(i+1)*self.batch_size):
+#             if item >= len(self.indices): break
+#             index = tuple(self.indices[item])
+#             data = get_data_patch(self.data, index, self.patch_size)
+#             label = self.gt[index]
+#             if self.loss == 'categorical_crossentropy':
+#                 label = to_categorical(label, num_classes = self.num_classes)
+
+#             batch_data.append(data)
+#             batch_labels.append(label)
+
+#         batch_data = tf.convert_to_tensor(batch_data)
+#         batch_labels = tf.convert_to_tensor(batch_labels)
+
+#         return batch_data, batch_labels
 
 class HyperspectralDataset(Sequence):
     def __init__(self, data, gt, shuffle=True, **hyperparams):
@@ -53,18 +101,38 @@ class HyperspectralDataset(Sequence):
             data_augmentation: bool, set to True to perform random flips
             supervision: 'full' or 'semi' supervised algorithms
         """
-        super(HyperspectralDataset, self).__init__()
+        # super(HyperspectralDataset, self).__init__()
         self.data = data
-        self.label = gt
+        self.gt = gt
         self.shuffle = shuffle
         self.batch_size = hyperparams["batch_size"]
         self.patch_size = hyperparams["patch_size"]
+        self.supervision = hyperparams['supervision']
         self.ignored_labels = set(hyperparams["ignored_labels"])
-        self.center_pixel = hyperparams["center_pixel"]
-        self.n_classes = hyperparams['n_classes']
+        self.num_classes = hyperparams['n_classes']
         self.loss = hyperparams['loss']
         
-        self.indices, self.labels = get_valid_indices(data, gt, **hyperparams)
+        if self.supervision == "full":
+            mask = np.ones_like(gt)
+            for label in self.ignored_labels:
+                mask[gt == label] = 0
+        # Semi-supervised : use all pixels, except padding
+        elif self.supervision == "semi":
+            mask = np.ones_like(gt)
+        x_pos, y_pos = np.nonzero(mask)
+        num_neighbors = self.patch_size // 2
+        self.indices = np.array(
+            [
+                (x, y)
+                for x, y in zip(x_pos, y_pos)
+                if x > num_neighbors 
+                    and x < data.shape[0] - num_neighbors 
+                    and y > num_neighbors 
+                    and y < data.shape[1] - num_neighbors
+            ]
+        )
+
+        self.labels = np.array([gt[x, y] for x, y in self.indices])
 
         # Run epoch end function to initialize dataset
         self.on_epoch_end()
@@ -77,76 +145,194 @@ class HyperspectralDataset(Sequence):
         return math.ceil(len(self.indices) / self.batch_size)
 
     def __getitem__(self, i):
-        indices = self.indices[i*self.batch_size:(i+1)*self.batch_size]
-        data_batch = []
-        labels = []
+        batch_data = []
+        batch_labels = []
 
-        for index in indices:
-            x, y = index
-            x1, y1 = x - self.patch_size // 2, y - self.patch_size // 2
-            x2, y2 = x1 + self.patch_size, y1 + self.patch_size
+        # Get all items in batch
+        for item in range(i*self.batch_size,(i+1)*self.batch_size):
 
-            data = self.data[x1:x2, y1:y2]
-            label = self.label[x1:x2, y1:y2]
+            # Make sure not to look for item id greater than number of
+            # indices
+            if item >= len(self.indices): break
 
-            # Copy the data into numpy arrays
-            data = np.asarray(np.copy(data), dtype="float32")
-            label = np.asarray(np.copy(label), dtype="int64")
+            # Get index tuple from indices
+            index = tuple(self.indices[item])
 
-            # Extract the center label if needed
-            if self.center_pixel and self.patch_size > 1:
-                label = label[self.patch_size // 2, self.patch_size // 2]
-            # Remove unused dimensions when we work with invidual spectrums
-            elif self.patch_size == 1:
-                data = data[:, 0, 0]
-                label = label[0, 0]
+            # Get data patch for the index
+            data = self.__get_data_patch(self.data, index, self.patch_size)
 
-            # Add a fourth dimension for 3D CNN
-            if self.patch_size > 1:
-                # Make 4D data ((Batch x) Planes x Channels x Width x Height)
-                # data = tf.expand_dims(data, 0)
-                data = np.expand_dims(data, 0)
+            # Get label for the patch
+            label = self.gt[index]
 
+            # If categorical cross-entropy, make sure labels are one-hot
+            # encoded
             if self.loss == 'categorical_crossentropy':
-                label = to_categorical(label, num_classes = self.n_classes)
+                label = to_categorical(label, num_classes = self.num_classes)
 
-            data_batch.append(data)
-            labels.append(label)
+            # Add data to lists
+            batch_data.append(data)
+            batch_labels.append(label)
 
-        data_batch = np.asarray(data_batch)
-        labels = np.asarray(labels)
+        batch_data = tf.convert_to_tensor(batch_data)
+        batch_labels = tf.convert_to_tensor(batch_labels)
 
-        # print(f'{i}>> data_batch shape: {data_batch.shape}')
-        # print(f'{i}>> labels shape: {labels.shape}')
+        return batch_data, batch_labels
 
-        return data_batch, labels
+    @staticmethod
+    def __get_data_patch(data, index, patch_size):
+        x, y = index
+        x1 = x - patch_size // 2    # Leftmost edge of patch
+        y1 = y - patch_size // 2    # Topmost edge of patch
+        x2 = x1 + patch_size        # Rightmost edge of patch
+        y2 = y1 + patch_size        # Bottommost edge of patch
+
+        patch = data[x1:x2, y1:y2]
+
+        # Copy the data into numpy arrays
+        # patch = np.asarray(np.copy(patch), dtype="float32")
+        patch = tf.convert_to_tensor(patch, dtype="float32")
+
+        if patch_size == 1:
+            patch = patch[:, 0, 0]
+
+        # Add a fourth dimension for 3D CNN
+        if patch_size > 1:
+            # Make 4D data ((Batch x) Planes x Channels x Width x Height)
+            # patch = np.expand_dims(patch, 0)
+            patch = tf.expand_dims(patch, 0)
+        
+        return patch
+
 
 ### Function Definitions ###
 
-def get_valid_indices(data, gt, **hyperparams):
-    patch_size = hyperparams["patch_size"]
-    ignored_labels = set(hyperparams["ignored_labels"])
-    supervision = hyperparams["supervision"]
+def hs_dataset_generator(data, gt, shuffle=True, **hyperparams):
+
+    patch_size = hyperparams['patch_size']
+    ignored_labels = hyperparams['ignored_labels']
+    num_classes = hyperparams['n_classes']
+    supervision = hyperparams['supervision']
+    batch_size = hyperparams['batch_size']
+    loss = hyperparams['loss']
+
+    indices, labels = get_valid_indices(data, gt, 
+                                        patch_size=patch_size,
+                                        ignored_labels=ignored_labels,
+                                        supervision=supervision)
+    
+    if shuffle:
+            np.random.shuffle(indices)
+
+    batch = 0
+    while batch*batch_size < len(indices):
+        batch_data = []
+        batch_labels = []
+        for i in range(batch*batch_size,(batch+1)*batch_size):
+            if i >= len(indices): break
+            index = tuple(indices[i])
+            label = gt[index]
+            if loss == 'categorical_crossentropy':
+                label = to_categorical(label, num_classes = num_classes)
+            batch_labels.append(label)
+            batch_data.append(get_data_patch(data, index, patch_size))
+    
+        yield tf.convert_to_tensor(batch_data), tf.convert_to_tensor(batch_labels)
+
+        batch += 1
+
+
+def get_valid_indices(data, gt, patch_size, ignored_labels, supervision='full'):
     # Fully supervised : use all pixels with label not ignored
     if supervision == "full":
         mask = np.ones_like(gt)
-        for l in ignored_labels:
-            mask[gt == l] = 0
+        for label in ignored_labels:
+            mask[gt == label] = 0
     # Semi-supervised : use all pixels, except padding
     elif supervision == "semi":
         mask = np.ones_like(gt)
     x_pos, y_pos = np.nonzero(mask)
-    p = patch_size // 2
+    num_neighbors = patch_size // 2
     indices = np.array(
         [
             (x, y)
             for x, y in zip(x_pos, y_pos)
-            if x > p and x < data.shape[0] - p and y > p and y < data.shape[1] - p
+            if x > num_neighbors 
+                and x < data.shape[0] - num_neighbors 
+                and y > num_neighbors 
+                and y < data.shape[1] - num_neighbors
         ]
     )
-    labels = [gt[x, y] for x, y in indices]
+    # indices = tf.convert_to_tensor(
+    #     [
+    #         (x, y)
+    #         for x, y in zip(x_pos, y_pos)
+    #         if x > num_neighbors 
+    #             and x < data.shape[0] - num_neighbors 
+    #             and y > num_neighbors 
+    #             and y < data.shape[1] - num_neighbors
+    #     ]
+    # )
+
+    labels = np.array([gt[x, y] for x, y in indices])
+    # labels = tf.convert_to_tensor([gt[x, y] for x, y in indices])
 
     return indices, labels
+
+def get_data_patch(data, index, patch_size):
+    x, y = index
+    x1 = x - patch_size // 2    # Leftmost edge of patch
+    y1 = y - patch_size // 2    # Topmost edge of patch
+    x2 = x1 + patch_size        # Rightmost edge of patch
+    y2 = y1 + patch_size        # Bottommost edge of patch
+
+    patch = data[x1:x2, y1:y2]
+
+    # Copy the data into numpy arrays
+    # patch = np.asarray(np.copy(patch), dtype="float32")
+    patch = tf.convert_to_tensor(patch, dtype="float32")
+
+    if patch_size == 1:
+        patch = patch[:, 0, 0]
+
+    # Add a fourth dimension for 3D CNN
+    if patch_size > 1:
+        # Make 4D data ((Batch x) Planes x Channels x Width x Height)
+        # patch = np.expand_dims(patch, 0)
+        patch = tf.expand_dims(patch, 0)
+    
+    return patch
+
+def get_data_patches(data, indices, patch_size, add_dims=False):
+    #TODO
+
+    patches = []
+
+    for index in indices:
+        x, y = index
+        x1 = x - patch_size // 2    # Leftmost edge of patch
+        y1 = y - patch_size // 2    # Topmost edge of patch
+        x2 = x1 + patch_size        # Rightmost edge of patch
+        y2 = y1 + patch_size        # Bottommost edge of patch
+
+        patch = data[x1:x2, y1:y2]
+
+        # Copy the data into numpy arrays
+        # patch = np.asarray(np.copy(patch), dtype="float32")
+        patch = tf.convert_to_tensor(patch, dtype="float32")
+
+        if patch_size == 1:
+            patch = patch[:, 0, 0]
+
+        # Add a fourth dimension for 3D CNN
+        if add_dims and patch_size > 1:
+            # Make 4D data ((Batch x) Planes x Channels x Width x Height)
+            # patch = np.expand_dims(patch, 0)
+            patch = tf.expand_dims(patch, 0)
+
+        patches.append(patch)
+
+    # return np.asarray(patches)
+    return tf.convert_to_tensor(patches)
 
 def sample_gt(gt, train_size, mode='random'):
     """Extract a fixed percentage of samples from an array of labels.
@@ -211,24 +397,13 @@ def sample_gt(gt, train_size, mode='random'):
         raise ValueError(f'{mode} sampling is not implemented yet.')
     return train_gt, test_gt
 
-def load_grss_dfc_2018_uh_dataset(reload=False, **hyperparams):
+def load_grss_dfc_2018_uh_dataset(**hyperparams):
     #TODO
     
-    # Make sure the global variables are used
-    global _grss_dfc_2018_dataset
-    global _grss_dfc_2018_train_gt
-    global _grss_dfc_2018_test_gt
 
-    # To speed up processing, don't load or reload dataset unless
-    # necessary
-    if _grss_dfc_2018_dataset is None or reload:
-        _grss_dfc_2018_dataset = UH_2018_Dataset()
-        _grss_dfc_2018_train_gt = _grss_dfc_2018_dataset.load_full_gt_image(train_only=True)
-        _grss_dfc_2018_test_gt = _grss_dfc_2018_dataset.load_full_gt_image(test_only=True)
-
-    dataset = _grss_dfc_2018_dataset
-    train_gt = _grss_dfc_2018_train_gt
-    test_gt = _grss_dfc_2018_test_gt
+    dataset = UH_2018_Dataset()
+    train_gt = dataset.load_full_gt_image(train_only=True)
+    test_gt = dataset.load_full_gt_image(test_only=True)
 
     data = None
 
@@ -404,6 +579,7 @@ def create_datasets(data, train_gt, test_gt, **hyperparams):
 
     patch_size = hyperparams['patch_size']  # N in NxN patch per sample
     train_split = hyperparams['train_split']    # training percent in val/train split
+    split_mode = hyperparams['split_mode']
 
     # Set pad length per dimension
     pad = patch_size // 2
@@ -419,8 +595,7 @@ def create_datasets(data, train_gt, test_gt, **hyperparams):
     print(f'padded test_gt shape: {test_gt.shape}')
 
     # Create validation dataset from training set
-    # train_gt, val_gt = sample_gt(train_gt, train_split, mode='random')
-    train_gt, val_gt = sample_gt(train_gt, train_split, mode='fixed')
+    train_gt, val_gt = sample_gt(train_gt, train_split, mode=split_mode)
 
     train_dataset = HyperspectralDataset(data, train_gt, **hyperparams)
     val_dataset = HyperspectralDataset(data, val_gt, **hyperparams)
@@ -428,3 +603,48 @@ def create_datasets(data, train_gt, test_gt, **hyperparams):
     true_test = np.array(test_dataset.labels)
 
     return train_dataset, val_dataset, test_dataset, true_test
+
+def preprocess_data(data, **hyperparams):
+    
+    #TODO
+
+    return data
+
+def get_data_split(data, train_gt, test_gt, ignored_labels, 
+                   patch_size, validation=True, train_split=0.8, supervision='full'):
+    #TODO
+
+    if validation:
+        print(f'Splitting training set into {train_split} training, {1-train_split} validation...')
+        train_gt, val_gt = sample_gt(train_gt, train_split, mode='fixed')
+
+    print('Getting valid training indices and labels...')
+    X_train_indices, y_train = get_valid_indices(data=data, gt=train_gt, 
+                                                 patch_size=patch_size, 
+                                                 ignored_labels=ignored_labels, 
+                                                 supervision=supervision)
+    print('Getting training data patches...')
+    X_train = get_data_patches(data, X_train_indices, patch_size)
+    
+    if validation: 
+        print('Getting valid validation indices and labels...')
+        X_val_indices, y_val = get_valid_indices(data=data, gt=val_gt, 
+                                                 patch_size=patch_size, 
+                                                 ignored_labels=ignored_labels, 
+                                                 supervision=supervision)
+        print('Getting validation data patches...')
+        X_val = get_data_patches(data, X_val_indices, patch_size)
+    
+    print('Getting valid testing indices and labels...')
+    X_test_indices, y_test = get_valid_indices(data=data, gt=test_gt, 
+                                               patch_size=patch_size, 
+                                               ignored_labels=ignored_labels, 
+                                               supervision=supervision)
+    print('Getting testing data patches...')
+    X_test = get_data_patches(data, X_test_indices, patch_size)
+
+    print('Data split completed!')
+    if validation:
+        return (X_train, y_train, X_test, y_test, X_val, y_val)
+    else:
+        return (X_train, y_train, X_test, y_test)

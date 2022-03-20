@@ -13,6 +13,7 @@ from locale import normalize
 import os
 
 ### Other Library Imports ###
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -24,8 +25,6 @@ import wx
 
 
 ### Local Imports ###
-
-import utilities
 
 ### Environment Setup ###
 

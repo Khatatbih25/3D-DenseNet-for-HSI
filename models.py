@@ -316,9 +316,9 @@ class CNN3DBuilder(object):
         print('original input shape:', input_shape)
         # orignal input shape: 1,7,7,200
 
-        if K.image_data_format() == 'channels_last':
-            input_shape = (input_shape[1], input_shape[2], input_shape[3], input_shape[0])
-        print('change input shape:', input_shape)
+        # if K.image_data_format() == 'channels_last':
+        #     input_shape = (input_shape[1], input_shape[2], input_shape[3], input_shape[0])
+        # print('change input shape:', input_shape)
 
         input = Input(shape=input_shape)
 
@@ -415,7 +415,7 @@ def baseline_cnn_model(img_rows, img_cols, img_channels,
         A keras API model of the constructed ML network.
     """
 
-    model_input = Input(shape=(img_rows, img_cols, img_channels, 1))
+    model_input = Input(shape=(1, img_rows, img_cols, img_channels))
     conv_layer = Conv3D(nb_filters, (patch_size, patch_size, img_channels), 
                         strides=(1, 1, 1),name='3d_convolution_layer', padding='same',
                         kernel_regularizer=regularizers.l2(0.01))(model_input)

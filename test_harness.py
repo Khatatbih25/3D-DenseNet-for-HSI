@@ -42,6 +42,9 @@ from tensorflow.keras.callbacks import (
 
 ### Local Imports ###
 from datasets import (
+    hs_dataset_generator,
+    preprocess_data,
+    sample_gt,
     create_datasets,
     load_grss_dfc_2018_uh_dataset,
     load_indian_pines_dataset,
@@ -54,10 +57,12 @@ from models import (
     cnn_3d_model,
     baseline_cnn_model,
 )
-from Utils import densenet_IN
+
+### Environment ###
+# remove abundant output
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 ### Constants ###
-
 
 ### Definitions ###
 
@@ -79,10 +84,9 @@ def get_device(ordinal):
     if ordinal < 0:
         print("Computation on CPU")
         device = '/CPU:0'
-    elif tf.test.is_gpu_available(cuda_only=True):
+    elif len(tf.config.list_physical_devices('GPU')) > 0:
         print(f'Computation on CUDA GPU device {ordinal}')
         device = f'/GPU:{ordinal}'
-        # tf.config.experimental.set_memory_growth(device, True)
     else:
         print("<!> CUDA was requested but is not available! Computation will go on CPU. <!>")
         device = '/CPU:0'
@@ -127,17 +131,29 @@ def prime_generator():
         
         q += 1
 
+def band_selection(data, classes, **hyperparams):
+    #TODO
+    pass
 
-def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels,
-              iteration = None, **hyperparams):
+def run_model(model, train_dataset, val_dataset, test_dataset, target_test,
+              labels, iteration = None, **hyperparams):
+
+    # Get X and y from datasets
+    target_test = test_dataset.labels
 
     # Initialize variables from the hyperparameters
     epochs = hyperparams['epochs']
     batch_size = hyperparams['batch_size']
     loss = hyperparams['loss']
     model_metrics = hyperparams['metrics']
-    best_weights_path = os.path.join(hyperparams['output_path'], 
-        f'{model.name}_best_weights_experiment_{iteration+1}.hdf5')
+    workers = hyperparams['workers']
+    output_path = hyperparams['output_path']
+    if iteration is not None:
+        best_weights_path = os.path.join(hyperparams['output_path'], 
+            f'{model.name}_best_weights_experiment_{iteration+1}.hdf5')
+    else:
+        best_weights_path = os.path.join(output_path, 
+            f'{model.name}_best_weights_experiment.hdf5')
     patience = hyperparams['patience']
     optimizer = get_optimizer(**hyperparams)
     ignored_labels = hyperparams['ignored_labels']
@@ -176,18 +192,28 @@ def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels
             epochs=epochs, 
             shuffle=True, 
             # use_multiprocessing=True,
-            # workers=4,
+            # workers=workers,
             callbacks=[cb_early_stopping, cb_save_best_model]
         )
 
-    # model_history = model.fit(
-    #         train_dataset,
-    #         validation_data=val_dataset,
-    #         batch_size=batch_size,
-    #         epochs=epochs, 
-    #         shuffle=True, 
-    #         callbacks=[cb_early_stopping, cb_save_best_model]
-    #     )
+    # Write model history to file
+    with open(os.path.join(output_path,
+         f'Experiment_{iteration+1}_training_history.txt'), 'w') as hf:
+
+        hf.write(f'EXPERIMENT #{iteration+1} MODEL HISTORY:\n')
+        hf.write('-----------------------------------------------\n')
+        hf.write(f'MODEL: {model.name}\n')
+        hf.write('-----------------------------------------------\n')
+
+        # Save model summary to file as well
+        model.summary(print_fn=lambda x: hf.write(x + '\n'))
+        
+        # Save info from each epoch to file
+        for epoch in range(model_history.params['epochs']):
+            hf.write(f'EPOCH: {epoch+1}\n')
+            for key in model_history.history.keys():
+                hf.write(f'  {key}: {model_history.history[key][epoch]}\n')
+
 
     # Record end time for model training
     model_train_end = time.process_time()
@@ -211,11 +237,11 @@ def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels
     model_train_time = datetime.timedelta(seconds=(model_train_end - model_train_start))
     model_test_time = datetime.timedelta(seconds=(model_test_end - model_test_start))
 
-    overall_acc = metrics.accuracy_score(true_test, pred_test)
-    precision = metrics.precision_score(true_test, pred_test, average='micro')
-    recall = metrics.recall_score(true_test, pred_test, average='micro')
-    kappa = metrics.cohen_kappa_score(true_test, pred_test)
-    confusion_matrix = metrics.confusion_matrix(true_test, pred_test)
+    overall_acc = metrics.accuracy_score(target_test, pred_test)
+    precision = metrics.precision_score(target_test, pred_test, average='micro')
+    recall = metrics.recall_score(target_test, pred_test, average='micro')
+    kappa = metrics.cohen_kappa_score(target_test, pred_test)
+    confusion_matrix = metrics.confusion_matrix(target_test, pred_test)
 
     # Calculate average accuracy and per-class accuracies
     list_diag = np.diag(confusion_matrix)
@@ -247,7 +273,7 @@ def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels
         print(f'{label}: {each_acc[i]}')
     print('---------------------------------------------------')
     print()
-    print(metrics.classification_report(true_test, pred_test, 
+    print(metrics.classification_report(target_test, pred_test, 
                                         target_names=labels, digits=len(labels)))
 
     results = {
@@ -267,9 +293,6 @@ def run_model(model, train_dataset, val_dataset, test_dataset, true_test, labels
     }
 
     return results
-
-def generate_results_csv():
-    pass
 
 def test_harness_parser():
     """
@@ -293,6 +316,12 @@ def test_harness_parser():
         type=int,
         default=-1,
         help="Specify CUDA device (defaults to -1, which learns on CPU)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Specify number of workers (processes) to use when training (defaults to 1)",
     )
     parser.add_argument("--runs", type=int, default=1, help="Number of runs (default: 1)")
     parser.add_argument(
@@ -328,6 +357,21 @@ def test_harness_parser():
         help='The hyperspectral or data fusion dataset to use for experiments'
     )
     parser.add_argument(
+        '--reuse_last_dataset',
+        action='store_true',
+        help='Reuse the last dataset generator'
+    )
+    parser.add_argument(
+        '--skip_data_preprocessing',
+        action='store_true',
+        help='Skip the data preprocessing step'
+    )
+    parser.add_argument(
+        '--skip_band_selection',
+        action='store_true',
+        help='Skip the band selection step'
+    )
+    parser.add_argument(
         '--model_id',
         type=str,
         default=None,
@@ -336,6 +380,11 @@ def test_harness_parser():
 
     # Training options
     group_train = parser.add_argument_group("Training")
+    group_train.add_argument(
+        "--random_seed",
+        type=int,
+        help="Random number generator seed.",
+    )
     group_train.add_argument(
         "--epochs",
         type=int,
@@ -360,6 +409,12 @@ def test_harness_parser():
         default = 0.80,
         help="The amount of samples set aside for training \
               during validation split (default = 0.80)"
+    )
+    group_train.add_argument(
+        "--split_mode", 
+        type=str, 
+        default = 'random',
+        help="The mode by which to split datasets (random, fixed, or disjoint)"
     )
     group_train.add_argument(
         "--class_balancing",
@@ -519,6 +574,9 @@ if __name__ == "__main__":
         output_path = hyperparams['output_path']
     else:
         output_path = './'
+    
+    # Get number of worker processes
+    workers = hyperparams['workers']
 
     # Get hyperparam derived variable values
     if hyperparams['experiments_json'] is not None:
@@ -558,6 +616,23 @@ if __name__ == "__main__":
     # Make a generater to create prime number random seeds
     primes = prime_generator()
 
+    # Set variables that carry state over experiments to None
+    dataset_choice = None
+    data = None
+    train_gt = None
+    test_gt = None
+    dataset_info = {
+        'name': None,
+        'num_classes': None,
+        'ignored_labels': None,
+        'class_labels': None,
+        'label_mapping': None,
+    }
+    train_dataset = None
+    val_dataset = None
+    test_dataset = None
+    target_test = None
+
     # Go through experiment iterations
     for iteration in range(iterations):
 
@@ -566,147 +641,21 @@ if __name__ == "__main__":
         print('*******************************************************')
         print()
 
-        # If loading experiments from a file, get new set of hyperparams
-        if experiments is not None:
-            hyperparams = experiments.iloc[iteration].to_dict()
-
-            # Ignore the output path in the experiments, use the path
-            # from command line arguments
-            hyperparams['output_path'] = output_path
-
-        # Initialize random seed for sampling function
-        # Each random seed is a prime number, in order
-        seed = next(primes)
-        print(f'< Iteration #{iteration} random seed: {seed} >')
-        print()
-        np.random.seed(seed)
-
-        # Print out parameters for experiment
-        print('.......................................................')
-        print('EXPERIMENT PARAMETERS')
-        print('.......................................................')
-        header = '{:<40} | {:<40}'.format('PARAMETER', 'VALUE')
-        print(header)
-        print('=' * len(header))
-        for key in hyperparams:
-            print('{:<40} | {:<40}'.format(key, str(hyperparams[key])))
-            print('-' * len(header))
-        print('-' * len(header))
-        print('.......................................................')
-
-        # Choose the appropriate device from the hyperparameters
-        device = get_device(hyperparams['cuda'])
-
-        if 'CPU' in device:
-            device_name = cpu_name
-        else:
-            gpu_num = int(device.split(':')[-1])
-            device_name = gpu_names[gpu_num]
-            gpu = tf.config.list_physical_devices('GPU')[gpu_num]
-            # tf.config.experimental.set_virtual_device_configuration(
-            #     gpu,
-            #     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=4096)])
-            tf.config.experimental.set_memory_growth(gpu, True)
-            # config = tf.compat.v1.ConfigProto()
-            # config.gpu_options.per_process_gpu_memory_fraction = 0.8
-            # config.gpu_options.allow_growth = True
-            # session = tf.compat.v1.InteractiveSession(config=config)
-
-        print()
-        print('-------------------------------------------------------------------')
-        print('LOADING DATASET...')
-        print('vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv')
-
-        # Get dataset choice parameter
-        dataset_choice = hyperparams['dataset']
-        print()
-        print(f' < Dataset Chosen: {dataset_choice} >')
-        print()
-
-        # Make sure dataset is in per-class data list dictionary
-        if dataset_choice not in per_class_data_lists:
-            per_class_data_lists[dataset_choice] = []
-
-        # Get selected dataset
-        if dataset_choice == 'grss_dfc_2018':
-            # Determine what parts of dataset to use
-            if (not hyperparams['use_hs_data']
-                and not hyperparams['use_lidar_ms_data']
-                and not hyperparams['use_lidar_ndsm_data']
-                and not hyperparams['use_vhr_data']
-                and not hyperparams['use_all_data']):
-
-                print('<!> No specific data selected, defaulting to using only hyperspectral data... <!>')
-                hyperparams['use_hs_data'] = True
-            
-            data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
-        elif dataset_choice == 'indian_pines':
-            data, train_gt, test_gt, dataset_info = load_indian_pines_dataset(**hyperparams)
-        elif dataset_choice == 'pavia_center':
-            data, train_gt, test_gt, dataset_info = load_pavia_center_dataset(**hyperparams)
-        elif dataset_choice == 'university_of_pavia':
-            data, train_gt, test_gt, dataset_info = load_university_of_pavia_dataset(**hyperparams)
-        else:
-            print('No dataset chosen! Defaulting to only hyperspectral bands of grss_dfc_2018...')
-            dataset_choice = 'grss_dfc_2018'
-            hyperparams['use_hs_data'] = True
-            data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
-
-        print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
-        print('DATASET LOADED!')
-        print('-------------------------------------------------------------------')
-        print()
-
-        # Set dataset variables
-        dataset_name = dataset_info['name']
-        num_classes = dataset_info['num_classes']
-        ignored_labels = dataset_info['ignored_labels']
-        all_class_labels = dataset_info['class_labels']
-        valid_class_labels = [label for index, label in enumerate(all_class_labels) 
-                                if index not in ignored_labels]
-
-
-        epochs = hyperparams['epochs']
-        batch_size = hyperparams['batch_size']
-        patch_size = hyperparams['patch_size']
-        train_split = hyperparams['train_split']
-        optimizer = hyperparams['optimizer']
-        learning_rate = hyperparams['lr']
-        loss = 'categorical_crossentropy'
-        img_channels = data.shape[-1]
-        img_rows = patch_size
-        img_cols = patch_size
-
-        # Add and update hyperparameters for model training
-        hyperparams.update(
-            {
-                'n_classes': num_classes,
-                'n_bands': img_channels,
-                'ignored_labels': ignored_labels,
-                'device': device,
-                'supervision': 'full',
-                'center_pixel': True,
-                'one_hot_encoding': True,
-                'metrics': ['accuracy'],
-                'loss': loss,
-            }
-        )
-
         experiment_data = {
             'experiment_number': iteration + 1,
             'success': False,
-            'random_seed': seed,
-            'dataset': dataset_name,
-            'channels': img_channels,
+            'random_seed': None,
+            'dataset': None,
+            'channels': None,
             'model': None,
-            'device': device_name,
-            'epochs': epochs,
-            'batch_size': batch_size,
-            'patch_size': patch_size,
-            'train_split': train_split,
-            'optimizer': optimizer,
-            'learning_rate': learning_rate,
-            'loss': loss,
+            'device': None,
+            'epochs': None,
+            'batch_size': None,
+            'patch_size': None,
+            'train_split': None,
+            'optimizer': None,
+            'learning_rate': None,
+            'loss': None,
             'train_time': 0.0,
             'test_time': 0.0,
             'test_score': 0.0,
@@ -720,21 +669,211 @@ if __name__ == "__main__":
 
         per_class_data = {
             'experiment_number': iteration + 1, 
-            'random_seed': seed,
+            'random_seed': None,
             'model': None, 
             'overall_accuracy': 0.0, 
             'average_accuracy': 0.0,
         }
-        for label in valid_class_labels:
-            per_class_data[label] = 0.0
-        
+
+        experiments_results_file = f'{outfile_prefix}_results.csv'
+        class_results_file = f'{outfile_prefix}__{dataset_choice}__class_results.csv'
+
+        # Experiment has begun, so make sure to catch any failures that
+        # may occur
         try:
+            # If loading experiments from a file, get new set of hyperparams
+            if experiments is not None:
+                hyperparams = experiments.iloc[iteration].to_dict()
+
+                # Ignore the output path in the experiments, use the path
+                # from command line arguments
+                hyperparams['output_path'] = output_path
+
+                # Ignore the workers argument in experiments, use the
+                # value from the command line
+                hyperparams['workers'] = workers
+
+                print('<~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~>')
+                print(f'EXPERIMENT NAME: {experiments.index[iteration]}')
+                print('<~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~>')
+                print()
+
+
+            # Print out parameters for experiment
+            print('.......................................................')
+            print('EXPERIMENT PARAMETERS')
+            print('.......................................................')
+            header = '{:<40} | {:<40}'.format('PARAMETER', 'VALUE')
+            print(header)
+            print('=' * len(header))
+            for key in hyperparams:
+                print('{:<40} | {:<40}'.format(key, str(hyperparams[key])))
+                print('-' * len(header))
+            print('-' * len(header))
+            print('.......................................................')
+
+            # Initialize random seed for sampling function
+            # Each random seed is a prime number, in order
+            if hyperparams['random_seed'] is not None:
+                seed = hyperparams['random_seed']
+            else:
+                seed = next(primes)
+            print(f'< Iteration #{iteration} random seed: {seed} >')
+            print()
+            np.random.seed(seed)
+
+            # Choose the appropriate device from the hyperparameters
+            device = get_device(hyperparams['cuda'])
+
+            if 'CPU' in device:
+                device_name = cpu_name
+            else:
+                gpu_num = int(device.split(':')[-1])
+                device_name = gpu_names[gpu_num]
+                gpu = tf.config.list_physical_devices('GPU')[gpu_num]
+                tf.config.experimental.set_memory_growth(gpu, True)
+        
+            # Device has been selected, so do all possible computation with device
             with tf.device(device):
-                print('-------------------------------------------------------------------')
-                print('CREATE DATASET SEQUENCES FOR MODEL')
-                print('-------------------------------------------------------------------')
-                train_dataset, val_dataset, test_dataset, true_test = create_datasets(data, train_gt, test_gt, **hyperparams)
-                print('-------------------------------------------------------------------')
+                reuse_last_dataset = hyperparams['reuse_last_dataset']
+                if reuse_last_dataset and dataset_choice is not None:
+                    print()
+                    print(f'< Reusing last dataset: {dataset_choice} >')
+                else:
+
+                    reuse_last_dataset = False
+
+                    print()
+                    print('-------------------------------------------------------------------')
+                    print('LOADING DATASET...')
+                    print('vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv')
+
+                    # Get dataset choice parameter
+                    dataset_choice = hyperparams['dataset']
+                    class_results_file = f'{outfile_prefix}__{dataset_choice}__class_results.csv'
+                    print()
+                    print(f' < Dataset Chosen: {dataset_choice} >')
+                    print()
+
+                    # Make sure dataset is in per-class data list dictionary
+                    if dataset_choice not in per_class_data_lists:
+                        per_class_data_lists[dataset_choice] = []
+
+                    # Get selected dataset
+                    if not reuse_last_dataset:
+                        if dataset_choice == 'grss_dfc_2018':
+                            # Determine what parts of dataset to use
+                            if (not hyperparams['use_hs_data']
+                                and not hyperparams['use_lidar_ms_data']
+                                and not hyperparams['use_lidar_ndsm_data']
+                                and not hyperparams['use_vhr_data']
+                                and not hyperparams['use_all_data']):
+
+                                print('<!> No specific data selected, defaulting to using only hyperspectral data... <!>')
+                                hyperparams['use_hs_data'] = True
+                            
+                            data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
+                        elif dataset_choice == 'indian_pines':
+                            data, train_gt, test_gt, dataset_info = load_indian_pines_dataset(**hyperparams)
+                        elif dataset_choice == 'pavia_center':
+                            data, train_gt, test_gt, dataset_info = load_pavia_center_dataset(**hyperparams)
+                        elif dataset_choice == 'university_of_pavia':
+                            data, train_gt, test_gt, dataset_info = load_university_of_pavia_dataset(**hyperparams)
+                        else:
+                            print('No dataset chosen! Defaulting to only hyperspectral bands of grss_dfc_2018...')
+                            dataset_choice = 'grss_dfc_2018'
+                            hyperparams['use_hs_data'] = True
+                            data, train_gt, test_gt, dataset_info = load_grss_dfc_2018_uh_dataset(**hyperparams)
+
+                    print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
+                    print('DATASET LOADED!')
+                    print('-------------------------------------------------------------------')
+                    print()
+
+                    if not hyperparams['skip_data_preprocessing']:
+                        print('-------------------------------------------------------------------')
+                        print('PREPROCESS THE DATA')
+                        print('-------------------------------------------------------------------')
+                        data = preprocess_data(data, **hyperparams)
+                        print('-------------------------------------------------------------------')
+                        print()
+                    
+                    if not hyperparams['skip_band_selection']:
+                        print('-------------------------------------------------------------------')
+                        print('RUN BAND SELECTION ALGORITHM')
+                        print('-------------------------------------------------------------------')
+                        data = band_selection(data, dataset_info['class_labels'], **hyperparams)
+                        print('-------------------------------------------------------------------')
+                        print()
+
+                # Set dataset variables
+                dataset_name = dataset_info['name']
+                num_classes = dataset_info['num_classes']
+                ignored_labels = dataset_info['ignored_labels']
+                all_class_labels = dataset_info['class_labels']
+                valid_class_labels = [label for index, label in enumerate(all_class_labels) 
+                                        if index not in ignored_labels]
+
+
+                epochs = hyperparams['epochs']
+                supervision = 'full'
+                batch_size = hyperparams['batch_size']
+                patch_size = hyperparams['patch_size']
+                train_split = hyperparams['train_split']
+                optimizer = hyperparams['optimizer']
+                learning_rate = hyperparams['lr']
+                loss = 'sparse_categorical_crossentropy'
+                img_channels = data.shape[-1]
+                img_rows = patch_size
+                img_cols = patch_size
+
+                # Add and update hyperparameters for model training
+                hyperparams.update(
+                    {
+                        'n_classes': num_classes,
+                        'n_bands': img_channels,
+                        'ignored_labels': ignored_labels,
+                        'device': device,
+                        'supervision': supervision,
+                        'center_pixel': True,
+                        'one_hot_encoding': True,
+                        'metrics': ['sparse_categorical_accuracy'],
+                        'loss': loss,
+                    }
+                )
+
+                # Update experiment data
+                experiment_data.update({
+                    'random_seed': seed,
+                    'dataset': dataset_name,
+                    'channels': img_channels,
+                    'device': device_name,
+                    'epochs': epochs,
+                    'batch_size': batch_size,
+                    'patch_size': patch_size,
+                    'train_split': train_split,
+                    'optimizer': optimizer,
+                    'learning_rate': learning_rate,
+                    'loss': loss,
+                })
+
+                # Update per-class data for experiment
+                per_class_data.update({
+                    'random_seed': seed,
+                })
+                for label in valid_class_labels:
+                    per_class_data[label] = 0.0
+
+                if not reuse_last_dataset:
+                    print('-------------------------------------------------------------------')
+                    print('SPLIT DATA FOR TRAINING, VALIDATION, AND TESTING')
+                    print('-------------------------------------------------------------------')
+
+                    print('Breaking down image into data patches and splitting data into train, validation, and test sets...')
+                    train_dataset, val_dataset, test_dataset, target_test = create_datasets(data, train_gt, test_gt, **hyperparams)
+
+                    print('-------------------------------------------------------------------')
+                    print()
 
 
                 print('-------------------------------------------------------------------')
@@ -767,18 +906,23 @@ if __name__ == "__main__":
                                     img_channels=img_channels, 
                                     nb_classes=num_classes)
                 
-                print('-------------------------------------------------------------------')
-                
                 # Record model name for output
                 experiment_data['model'] = model.name
                 per_class_data['model'] = model.name
+
+                print('-------------------------------------------------------------------')
+                print()
+                
+                print('-------------------------------------------------------------------')
+                print('RUN MODEL')
+                print('-------------------------------------------------------------------')
 
                 # Run experiment on model
                 results = run_model(model=model, 
                                     train_dataset=train_dataset, 
                                     val_dataset=val_dataset, 
-                                    test_dataset=test_dataset, 
-                                    true_test=true_test, 
+                                    test_dataset=test_dataset,
+                                    target_test=target_test, 
                                     labels=all_class_labels, 
                                     iteration=iteration,
                                     **hyperparams)
@@ -800,6 +944,9 @@ if __name__ == "__main__":
                 for index, acc in enumerate(results['per_class_accuracies']):
                     per_class_data[results['labels'][index]] = acc
 
+                print('-------------------------------------------------------------------')
+                print()
+
                 experiment_data['success'] = True
 
         except Exception as e:
@@ -819,10 +966,45 @@ if __name__ == "__main__":
             print('###################################################')
             print()
 
-            print(f'Experiment #{iteration} crashed and thus failed!')
+            # Write exception to file
+            with open(os.path.join(output_path, f'experiment_{iteration+1}_exception.log'),'w') as ef:
+                ef.write('\n')
+                ef.write('###################################################\n')
+                ef.write('!!! EXCEPTION OCCURRED !!!\n')
+                ef.write('###################################################\n')
+                ef.write(f'Exception Type: {type(e)}\n')
+                ef.write(f'Exception Line: {e.__traceback__.tb_lineno}\n')
+                ef.write(f'Exception Desc: {e}\n')
+                ef.write('\n')
+                ef.write('---------------------------------------------------\n')
+                ef.write('** Full Traceback **\n')
+                ef.write('\n')
+                # Print full exception
+                ef.write(f'{traceback.format_exc()}\n')
+                ef.write('###################################################\n')
+                ef.write('\n')
+
+            print(f'Experiment #{iteration+1} crashed and thus failed!')
         
         experiment_data_list.append(experiment_data)
         per_class_data_lists[dataset_choice].append(per_class_data)
+
+        print()
+        print('-------------------------------------------------------------------')
+        print('SAVING RESULTS...')
+
+        experiment_results = pd.DataFrame(experiment_data_list)
+        experiment_results.to_csv(os.path.join(output_path, experiments_results_file))
+        
+        print('  >>> Experiment results saved!')
+
+        for dataset_choice in per_class_data_lists:
+            per_class_data_results = pd.DataFrame(per_class_data_lists[dataset_choice])
+            per_class_data_results.to_csv(os.path.join(output_path, class_results_file))
+            print(f'  >>> {dataset_choice} per-class results saved!')
+
+        print('RESULTS SAVED!')
+        print('-------------------------------------------------------------------')
 
         print()
         print('*******************************************************')
@@ -831,25 +1013,6 @@ if __name__ == "__main__":
         print()
     
     print()
-    print()
-    print('-------------------------------------------------------------------')
-    print('ALL EXPERIMENTS COMPLETED! SAVING RESULTS...')
-    
-
-    experiment_results = pd.DataFrame(experiment_data_list)
-    experiment_results.to_csv(os.path.join(output_path, 
-                                f'{outfile_prefix}_results.csv'))
-    
-    print('  >>> Experiment results saved!')
-
-    for dataset_choice in per_class_data_lists:
-        per_class_data_results = pd.DataFrame(per_class_data_lists[dataset_choice])
-        per_class_data_results.to_csv(os.path.join(output_path, 
-                        f'{outfile_prefix}__{dataset_choice}__class_results.csv'))
-        print(f'  >>> {dataset_choice} per-class results saved!')
-
-    print('RESULTS SAVED!')
-    print('-------------------------------------------------------------------')
     print()
     print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
     print('EXPERIMENTS COMPLETE!')
