@@ -218,7 +218,7 @@ def load_houston_2018_dataset():
 
     ### Constants ###
 
-    HOUSTON_DATASET_PATH = 'datasets/grss_dfc_2018/'
+    HOUSTON_DATASET_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset'
     TRAINING_GT_IMAGE_PATH = HOUSTON_DATASET_PATH + 'TrainingGT/2018_IEEE_GRSS_DFC_GT_TR.tif'
     TESTING_GT_IMAGE_PATH = HOUSTON_DATASET_PATH + 'TestingGT/Test_Labels.tif'
     HSI_IMAGE_PATH = HOUSTON_DATASET_PATH + 'FullHSIDataset/20170218_UH_CASI_S4_NAD83.pix'
