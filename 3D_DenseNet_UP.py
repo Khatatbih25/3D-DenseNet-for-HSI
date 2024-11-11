@@ -461,8 +461,8 @@ def run_3d_densenet_up():
     modelStatsRecord.outputStats(KAPPA_3D_DenseNet, OA_3D_DenseNet, AA_3D_DenseNet, ELEMENT_ACC_3D_DenseNet,
                                 TRAINING_TIME_3D_DenseNet, TESTING_TIME_3D_DenseNet,
                                 history_3d_densenet, loss_and_metrics, CATEGORY,
-                                'training_results/university_of_pavia/UP_train_3D_10.txt',
-                                'training_results/university_of_pavia/UP_train_3D_element_10.txt')
+                                '/content/drive/MyDrive/data/UH_2018_Dataset/training_results/university_of_pavia/UP_train_3D_10.txt',
+                                '/content/drive/MyDrive/data/UH_2018_Dataset/training_results/university_of_pavia/UP_train_3D_element_10.txt')
 
 
 ### Main ###
