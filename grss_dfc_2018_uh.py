@@ -32,7 +32,7 @@ import wx
 
 # Path to directory containing all GRSS 2018 Data Fusion Contest
 # University of Houston image data
-UH_2018_DATASET_DIRECTORY_PATH = 'datasets/grss_dfc_2018/'
+UH_2018_DATASET_DIRECTORY_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset'
 
 # Following paths are assumed to be from the root UH 2018 dataset path
 # - DEM_C123_3msr is a bare-earth digital elevation model (DEM) generated
@@ -41,36 +41,36 @@ UH_2018_DATASET_DIRECTORY_PATH = 'datasets/grss_dfc_2018/'
 # - DEM+B_C123 is a hybrid ground and building DEM, generated from returns
 #    that were classified as coming from buildings and the ground by all
 #    titan sensors
-UH_2018_TRAINING_GT_IMAGE_PATH = 'TrainingGT/2018_IEEE_GRSS_DFC_GT_TR.tif'
-UH_2018_TESTING_GT_IMAGE_PATH = 'TestingGT/Test_Labels.tif'
-UH_2018_HS_IMAGE_PATH = 'FullHSIDataset/20170218_UH_CASI_S4_NAD83.pix'
-UH_2018_LIDAR_DSM_PATH = 'Lidar GeoTiff Rasters/DSM_C12/UH17c_GEF051.tif'
-UH_2018_LIDAR_DEM_3MSR_PATH = 'Lidar GeoTiff Rasters/DEM_C123_3msr/UH17_GEG051.tif'
-UH_2018_LIDAR_DEM_TLI_PATH = 'Lidar GeoTiff Rasters/DEM_C123_TLI/UH17_GEG05.tif'
-UH_2018_LIDAR_DEM_B_PATH = 'Lidar GeoTiff Rasters/DEM+B_C123/UH17_GEM051.tif'
-UH_2018_LIDAR_INTENSITY_1550NM_PATH = 'Lidar GeoTiff Rasters/Intensity_C1/UH17_GI1F051.tif'
-UH_2018_LIDAR_INTENSITY_1064NM_PATH = 'Lidar GeoTiff Rasters/Intensity_C2/UH17_GI2F051.tif'
-UH_2018_LIDAR_INTENSITY_532NM_PATH = 'Lidar GeoTiff Rasters/Intensity_C3/UH17_GI3F051.tif'
+UH_2018_TRAINING_GT_IMAGE_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/TrainingGT/2018_IEEE_GRSS_DFC_GT_TR.tif'
+UH_2018_TESTING_GT_IMAGE_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/TestingGT/Test_Labels.tif'
+UH_2018_HS_IMAGE_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/FullHSIDataset/20170218_UH_CASI_S4_NAD83.pix'
+UH_2018_LIDAR_DSM_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/Lidar GeoTiff Rasters/DSM_C12/UH17c_GEF051.tif'
+UH_2018_LIDAR_DEM_3MSR_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/Lidar GeoTiff Rasters/DEM_C123_3msr/UH17_GEG051.tif'
+UH_2018_LIDAR_DEM_TLI_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/Lidar GeoTiff Rasters/DEM_C123_TLI/UH17_GEG05.tif'
+UH_2018_LIDAR_DEM_B_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/Lidar GeoTiff Rasters/DEM+B_C123/UH17_GEM051.tif'
+UH_2018_LIDAR_INTENSITY_1550NM_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/Lidar GeoTiff Rasters/Intensity_C1/UH17_GI1F051.tif'
+UH_2018_LIDAR_INTENSITY_1064NM_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/Lidar GeoTiff Rasters/Intensity_C2/UH17_GI2F051.tif'
+UH_2018_LIDAR_INTENSITY_532NM_PATH = '/content/drive/MyDrive/data/UH_2018_Dataset/Lidar GeoTiff Rasters/Intensity_C3/UH17_GI3F051.tif'
 
 # Paths, in order of tile, for the very high resolution RGB image
 UH_2018_VHR_IMAGE_PATHS = [
     [
-        'Final RGB HR Imagery/UH_NAD83_271460_3290290.tif',
-        'Final RGB HR Imagery/UH_NAD83_272056_3290290.tif',
-        'Final RGB HR Imagery/UH_NAD83_272652_3290290.tif',
-        'Final RGB HR Imagery/UH_NAD83_273248_3290290.tif',
-        'Final RGB HR Imagery/UH_NAD83_273844_3290290.tif',
-        'Final RGB HR Imagery/UH_NAD83_274440_3290290.tif',
-        'Final RGB HR Imagery/UH_NAD83_275036_3290290.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_271460_3290290.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_272056_3290290.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_272652_3290290.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_273248_3290290.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_273844_3290290.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_274440_3290290.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_275036_3290290.tif',
     ],
     [
-        'Final RGB HR Imagery/UH_NAD83_271460_3289689.tif',
-        'Final RGB HR Imagery/UH_NAD83_272056_3289689.tif',
-        'Final RGB HR Imagery/UH_NAD83_272652_3289689.tif',
-        'Final RGB HR Imagery/UH_NAD83_273248_3289689.tif',
-        'Final RGB HR Imagery/UH_NAD83_273844_3289689.tif',
-        'Final RGB HR Imagery/UH_NAD83_274440_3289689.tif',
-        'Final RGB HR Imagery/UH_NAD83_275036_3289689.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_271460_3289689.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_272056_3289689.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_272652_3289689.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_273248_3289689.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_273844_3289689.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_274440_3289689.tif',
+        '/content/drive/MyDrive/data/UH_2018_Dataset/Final RGB HR Imagery/UH_NAD83_275036_3289689.tif',
     ],
 ]
 
