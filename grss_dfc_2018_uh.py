@@ -21,7 +21,7 @@ import rasterio
 from rasterio.enums import Resampling
 from rasterio.windows import Window
 import spectral
-import wx
+#import wx
 
 
 ### Local Imports ###
